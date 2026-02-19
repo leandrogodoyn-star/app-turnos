@@ -41,3 +41,10 @@ app-example
 # generated native folders
 /ios
 /android
+
+
+.env
+node_modules/
+turnosbot/.env
+turnosbot/node_modules/
+.expo/
