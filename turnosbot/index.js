@@ -25,7 +25,7 @@ app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
 
   try {
-    const from = req.body?.From; // formato: whatsapp:+5493329311017
+    const from = req.body?.From?.replace(/\s/g, ""); // formato: whatsapp:+5493329311017
     const text = req.body?.Body?.trim().toLowerCase();
     if (!from || !text) return;
 
