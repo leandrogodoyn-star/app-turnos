@@ -1,9 +1,10 @@
 require("dotenv").config();
 const express = require("express");
-const axios = require("axios");
+const twilio = require("twilio");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
 const supabase = createClient(
@@ -11,51 +12,37 @@ const supabase = createClient(
   process.env.SUPABASE_KEY,
 );
 
-// ─── Verificación del webhook (Meta lo llama una sola vez) ───────────────────
-app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN,
+);
 
-  if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado");
-    res.status(200).send(challenge);
-  } else {
-    res.status(403).send("Token inválido");
-  }
-});
+// ─── Health check ────────────────────────────────────────────────────────────
+app.get("/", (req, res) => res.send("Bot corriendo ✅"));
 
-// ─── Recibir mensajes ────────────────────────────────────────────────────────
+// ─── Recibir mensajes de Twilio ──────────────────────────────────────────────
 app.post("/webhook", async (req, res) => {
-  res.sendStatus(200); // Siempre responder 200 rápido a Meta
+  res.sendStatus(200);
 
   try {
-    const entry = req.body?.entry?.[0];
-    const change = entry?.changes?.[0];
-    const message = change?.value?.messages?.[0];
-    if (!message) return;
-
-    const from = message.from; // número del cliente
-    const text = message.text?.body?.trim().toLowerCase();
-    if (!text) return;
+    const from = req.body?.From; // formato: whatsapp:+5493329311017
+    const text = req.body?.Body?.trim().toLowerCase();
+    if (!from || !text) return;
 
     console.log(`📩 Mensaje de ${from}: ${text}`);
-
     await procesarMensaje(from, text);
   } catch (err) {
     console.error("Error procesando mensaje:", err);
   }
 });
 
-// ─── Estados de conversación (en memoria) ───────────────────────────────────
-// { [numeroCliente]: { paso, negocioId, negocioNombre, fecha, hora, nombre } }
+// ─── Estados de conversación (en memoria) ────────────────────────────────────
 const sesiones = {};
 
 // ─── Lógica del bot ──────────────────────────────────────────────────────────
 async function procesarMensaje(from, text) {
   const sesion = sesiones[from] || { paso: "inicio" };
 
-  // Comando para reiniciar en cualquier momento
   if (text === "cancelar" || text === "salir" || text === "reiniciar") {
     delete sesiones[from];
     await enviarMensaje(
@@ -67,7 +54,6 @@ async function procesarMensaje(from, text) {
 
   switch (sesion.paso) {
     case "inicio": {
-      // El cliente escribe el código del negocio (ej: #lopez123)
       if (!text.startsWith("#")) {
         await enviarMensaje(
           from,
@@ -79,7 +65,7 @@ async function procesarMensaje(from, text) {
         return;
       }
 
-      const codigo = text.slice(1); // sacar el #
+      const codigo = text.slice(1);
       const { data: negocio } = await supabase
         .from("perfiles")
         .select("id, nombre")
@@ -111,7 +97,6 @@ async function procesarMensaje(from, text) {
     case "pedir_nombre": {
       sesiones[from] = { ...sesion, paso: "pedir_fecha", nombre: text };
 
-      // Traer próximas fechas con horarios disponibles
       const fechas = await obtenerFechasDisponibles(sesion.negocioId);
       if (fechas.length === 0) {
         await enviarMensaje(
@@ -224,7 +209,6 @@ async function procesarMensaje(from, text) {
       if (text === "1" || text === "si" || text === "sí") {
         const s = sesiones[from];
 
-        // Verificar que el horario siga disponible
         const disponible = await verificarDisponibilidad(
           s.negocioId,
           s.fecha,
@@ -240,18 +224,21 @@ async function procesarMensaje(from, text) {
           return;
         }
 
-        // Crear el turno en Supabase
+        // Extraer solo el número de teléfono (sacar "whatsapp:+")
+        const telefono = from.replace("whatsapp:", "");
+
         const { error } = await supabase.from("turnos").insert({
           user_id: s.negocioId,
           fecha: s.fecha,
           hora: s.hora,
           estado: "pendiente",
           nombre_cliente: s.nombre,
-          telefono: from,
+          telefono,
           servicio: s.servicio,
         });
 
         if (error) {
+          console.error("Error insertando turno:", error);
           await enviarMensaje(
             from,
             "❌ Hubo un error al crear el turno. Intentá de nuevo.",
@@ -294,11 +281,11 @@ async function procesarMensaje(from, text) {
   }
 }
 
-// ─── Helpers Supabase ────────────────────────────────────────────────────────
+// ─── Helpers Supabase ─────────────────────────────────────────────────────────
 
 async function obtenerFechasDisponibles(negocioId) {
   const hoy = new Date();
-  const fechas = [];
+  const disponibles = [];
 
   for (let i = 0; i < 14; i++) {
     const d = new Date(hoy);
@@ -306,32 +293,25 @@ async function obtenerFechasDisponibles(negocioId) {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
-    fechas.push(`${yyyy}-${mm}-${dd}`);
-  }
+    const fecha = `${yyyy}-${mm}-${dd}`;
 
-  // Filtrar solo fechas que tengan al menos un horario disponible
-  const disponibles = [];
-  for (const fecha of fechas) {
     const horarios = await obtenerHorariosDisponibles(negocioId, fecha);
     if (horarios.length > 0) disponibles.push(fecha);
-    if (disponibles.length >= 5) break; // máximo 5 fechas
+    if (disponibles.length >= 5) break;
   }
 
   return disponibles;
 }
 
 async function obtenerHorariosDisponibles(negocioId, fecha) {
-  // Generar todos los slots de 8:00 a 19:00
   const todosLosSlots = generarSlots("08:00", "19:00");
 
-  // Traer bloqueados por el dueño
   const { data: bloqueados } = await supabase
     .from("horarios_bloqueados")
     .select("hora")
     .eq("user_id", negocioId)
     .eq("fecha", fecha);
 
-  // Traer ocupados por turnos existentes
   const { data: ocupados } = await supabase
     .from("turnos")
     .select("hora")
@@ -345,7 +325,7 @@ async function obtenerHorariosDisponibles(negocioId, fecha) {
   const ocupadosSet = new Set(ocupados?.map((t) => t.hora.slice(0, 5)) ?? []);
 
   return todosLosSlots.filter(
-    (slot) => !bloqueadosSet.has(slot) && !ocupadosSet.has(slot),
+    (s) => !bloqueadosSet.has(s) && !ocupadosSet.has(s),
   );
 }
 
@@ -372,7 +352,7 @@ async function verificarDisponibilidad(negocioId, fecha, hora) {
   return !ocupado;
 }
 
-// ─── Helpers generales ───────────────────────────────────────────────────────
+// ─── Helpers generales ────────────────────────────────────────────────────────
 
 function generarSlots(horaInicio, horaFin) {
   const slots = [];
@@ -412,29 +392,16 @@ function formatearFecha(fecha) {
 
 async function enviarMensaje(to, mensaje) {
   try {
-    await axios.post(
-      `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: mensaje },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    await twilioClient.messages.create({
+      from: process.env.TWILIO_SANDBOX_NUMBER,
+      to,
+      body: mensaje,
+    });
   } catch (err) {
-    console.error(
-      "Error enviando mensaje:",
-      err?.response?.data || err.message,
-    );
+    console.error("Error enviando mensaje:", err?.message || err);
   }
 }
 
-// ─── Iniciar servidor ────────────────────────────────────────────────────────
+// ─── Iniciar servidor ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor corriendo en puerto ${PORT}`));
