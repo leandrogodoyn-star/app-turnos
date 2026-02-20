@@ -15,16 +15,17 @@ import { supabase } from "../../lib/supabase";
 import { router } from "expo-router";
 import { cambiarFoto } from "../../lib/utilidades";
 
-type Turno = {
+type Reserva = {
   id: string;
-  user_id: string;
-  fecha: string;
-  hora: string;
-  estado: string;
-  creado_en: string;
-  nombre_cliente?: string;
-  telefono?: string;
-  servicio?: string;
+  admin_id: string;
+  horario_id: string;
+  cliente_nombre: string;
+  cliente_telefono: string;
+  // Datos del horario (join)
+  fecha?: string;
+  hora?: string;
+  // Estado local (no existe en DB, lo manejamos en la app)
+  estado: "pendiente" | "cancelado";
 };
 
 const COLORS = {
@@ -48,25 +49,10 @@ const COLORS = {
   textMuted: "#4A4E6A",
 };
 
-const estadoConfig: Record<
-  string,
-  { color: string; bg: string; label: string }
-> = {
-  pendiente: {
-    color: COLORS.warning,
-    bg: COLORS.warningDim,
-    label: "Pendiente",
-  },
-  confirmado: {
-    color: COLORS.success,
-    bg: COLORS.successDim,
-    label: "Confirmado",
-  },
-  cancelado: { color: COLORS.danger, bg: COLORS.dangerDim, label: "Cancelado" },
-};
-
-function Badge({ estado }: { estado: string }) {
-  const config = estadoConfig[estado] || estadoConfig.pendiente;
+function Badge({ cancelado }: { cancelado: boolean }) {
+  const config = cancelado
+    ? { color: COLORS.danger, bg: COLORS.dangerDim, label: "Cancelado" }
+    : { color: COLORS.warning, bg: COLORS.warningDim, label: "Pendiente" };
   return (
     <View
       style={{
@@ -122,20 +108,20 @@ function Avatar({ nombre }: { nombre?: string }) {
   );
 }
 
-function TurnoCard({
+function ReservaCard({
   item,
   onCancelar,
 }: {
-  item: Turno;
-  onCancelar: (id: string) => void;
+  item: Reserva;
+  onCancelar: (id: string, horarioId: string) => void;
 }) {
   const esCancelado = item.estado === "cancelado";
   const [expandido, setExpandido] = useState(false);
 
   const abrirWhatsApp = () => {
-    if (!item.telefono) return;
-    const numero = item.telefono.replace(/\D/g, "");
-    const mensaje = `Hola ${item.nombre_cliente || ""}, te confirmamos tu turno para el ${item.fecha} a las ${item.hora}. ¡Te esperamos!`;
+    if (!item.cliente_telefono) return;
+    const numero = item.cliente_telefono.replace(/\D/g, "");
+    const mensaje = `Hola ${item.cliente_nombre || ""}, te confirmamos tu turno para el ${item.fecha} a las ${item.hora}. ¡Te esperamos!`;
     Linking.openURL(
       `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`,
     );
@@ -144,13 +130,13 @@ function TurnoCard({
   const confirmarCancelacion = () => {
     Alert.alert(
       "Cancelar turno",
-      `¿Cancelás el turno de ${item.nombre_cliente || "este cliente"} a las ${item.hora}?`,
+      `¿Cancelás el turno de ${item.cliente_nombre || "este cliente"} a las ${item.hora}?`,
       [
         { text: "No", style: "cancel" },
         {
           text: "Sí, cancelar",
           style: "destructive",
-          onPress: () => onCancelar(item.id),
+          onPress: () => onCancelar(item.id, item.horario_id),
         },
       ],
     );
@@ -193,7 +179,7 @@ function TurnoCard({
           paddingLeft: 20,
         }}
       >
-        <Avatar nombre={item.nombre_cliente} />
+        <Avatar nombre={item.cliente_nombre} />
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text
             style={{
@@ -203,7 +189,7 @@ function TurnoCard({
               marginBottom: 3,
             }}
           >
-            {item.nombre_cliente || "Cliente sin nombre"}
+            {item.cliente_nombre || "Cliente sin nombre"}
           </Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
@@ -216,7 +202,7 @@ function TurnoCard({
           </View>
         </View>
         <View style={{ alignItems: "flex-end", gap: 6 }}>
-          <Badge estado={item.estado} />
+          <Badge cancelado={esCancelado} />
           <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
             {expandido ? "▲" : "▼"}
           </Text>
@@ -234,45 +220,7 @@ function TurnoCard({
             gap: 10,
           }}
         >
-          {item.servicio && (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <View
-                style={{
-                  backgroundColor: COLORS.accentDim,
-                  borderRadius: 8,
-                  padding: 8,
-                  borderWidth: 1,
-                  borderColor: COLORS.accent + "33",
-                }}
-              >
-                <Text style={{ fontSize: 16 }}>✂️</Text>
-              </View>
-              <View>
-                <Text
-                  style={{
-                    color: COLORS.textMuted,
-                    fontSize: 11,
-                    letterSpacing: 0.8,
-                  }}
-                >
-                  SERVICIO
-                </Text>
-                <Text
-                  style={{
-                    color: COLORS.textPrimary,
-                    fontSize: 14,
-                    fontWeight: "600",
-                  }}
-                >
-                  {item.servicio}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {item.telefono && (
+          {item.cliente_telefono && (
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
             >
@@ -304,7 +252,7 @@ function TurnoCard({
                     fontWeight: "600",
                   }}
                 >
-                  {item.telefono}
+                  {item.cliente_telefono}
                 </Text>
               </View>
             </View>
@@ -313,7 +261,7 @@ function TurnoCard({
           {/* Acciones */}
           {!esCancelado && (
             <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-              {item.telefono && (
+              {item.cliente_telefono && (
                 <TouchableOpacity
                   onPress={abrirWhatsApp}
                   style={{
@@ -376,23 +324,58 @@ function TurnoCard({
 }
 
 export default function Dashboard() {
-  const [turnos, setTurnos] = useState<Turno[]>([]);
+  const [reservas, setReservas] = useState<Reserva[]>([]);
   const [perfil, setPerfil] = useState<any>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [editarNombre, setEditarNombre] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
-  const [filtro, setFiltro] = useState<
-    "todos" | "pendiente" | "confirmado" | "cancelado"
-  >("todos");
+  const [filtro, setFiltro] = useState<"todos" | "pendiente" | "cancelado">(
+    "todos",
+  );
 
-  const cargarTurnos = async () => {
+  const cargarReservas = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) return;
+
+    // Traer reservas con datos del horario via join
     const { data } = await supabase
-      .from("turnos")
-      .select("*")
-      .not("nombre_cliente", "is", null) // solo turnos reservados por clientes
-      .order("fecha", { ascending: true })
-      .order("hora", { ascending: true });
-    if (data) setTurnos(data);
+      .from("reservas")
+      .select(
+        `
+        id,
+        admin_id,
+        horario_id,
+        cliente_nombre,
+        cliente_telefono,
+        horarios (fecha, hora, disponible)
+      `,
+      )
+      .eq("admin_id", userId)
+      .order("horario_id", { ascending: true });
+
+    if (data) {
+      const reservasFormateadas: Reserva[] = data.map((r: any) => ({
+        id: r.id,
+        admin_id: r.admin_id,
+        horario_id: r.horario_id,
+        cliente_nombre: r.cliente_nombre,
+        cliente_telefono: r.cliente_telefono,
+        fecha: r.horarios?.fecha,
+        hora: r.horarios?.hora?.slice(0, 5),
+        // Si el horario está deshabilitado, la reserva está cancelada
+        estado: r.horarios?.disponible === false ? "cancelado" : "pendiente",
+      }));
+
+      // Ordenar por fecha y hora
+      reservasFormateadas.sort((a, b) => {
+        if (a.fecha !== b.fecha)
+          return (a.fecha || "") > (b.fecha || "") ? 1 : -1;
+        return (a.hora || "") > (b.hora || "") ? 1 : -1;
+      });
+
+      setReservas(reservasFormateadas);
+    }
   };
 
   const cargarPerfil = async () => {
@@ -401,7 +384,7 @@ export default function Dashboard() {
     if (!userId) return;
 
     const { data: perfilData } = await supabase
-      .from("perfiles")
+      .from("profiles")
       .select("*")
       .eq("id", userId)
       .single();
@@ -415,18 +398,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     cargarPerfil();
-    cargarTurnos();
+    cargarReservas();
   }, []);
 
-  const cancelarTurno = async (id: string) => {
-    await supabase.from("turnos").update({ estado: "cancelado" }).eq("id", id);
-    cargarTurnos();
+  // Cancelar: poner el horario como no disponible y eliminar la reserva
+  const cancelarReserva = async (id: string, horarioId: string) => {
+    await supabase
+      .from("horarios")
+      .update({ disponible: false })
+      .eq("id", horarioId);
+    await supabase.from("reservas").delete().eq("id", id);
+    cargarReservas();
   };
 
   const handleCambiarNombre = async () => {
     if (!nuevoNombre) return;
     await supabase
-      .from("perfiles")
+      .from("profiles")
       .update({ nombre: nuevoNombre })
       .eq("id", perfil.id);
     setPerfil({ ...perfil, nombre: nuevoNombre });
@@ -438,12 +426,11 @@ export default function Dashboard() {
     router.replace("/login");
   };
 
-  const turnosFiltrados =
-    filtro === "todos" ? turnos : turnos.filter((t) => t.estado === filtro);
+  const reservasFiltradas =
+    filtro === "todos" ? reservas : reservas.filter((r) => r.estado === filtro);
 
-  const pendientes = turnos.filter((t) => t.estado === "pendiente").length;
-  const confirmados = turnos.filter((t) => t.estado === "confirmado").length;
-  const cancelados = turnos.filter((t) => t.estado === "cancelado").length;
+  const pendientes = reservas.filter((r) => r.estado === "pendiente").length;
+  const cancelados = reservas.filter((r) => r.estado === "cancelado").length;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -613,7 +600,7 @@ export default function Dashboard() {
       </View>
 
       <FlatList
-        data={turnosFiltrados}
+        data={reservasFiltradas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
         ListHeaderComponent={
@@ -622,16 +609,16 @@ export default function Dashboard() {
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
               {[
                 {
+                  label: "Total",
+                  value: reservas.length,
+                  color: COLORS.accent,
+                  bg: COLORS.accentDim,
+                },
+                {
                   label: "Pendientes",
                   value: pendientes,
                   color: COLORS.warning,
                   bg: COLORS.warningDim,
-                },
-                {
-                  label: "Confirmados",
-                  value: confirmados,
-                  color: COLORS.success,
-                  bg: COLORS.successDim,
                 },
                 {
                   label: "Cancelados",
@@ -708,41 +695,37 @@ export default function Dashboard() {
 
             {/* Filtros */}
             <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-              {(["todos", "pendiente", "confirmado", "cancelado"] as const).map(
-                (f) => (
-                  <TouchableOpacity
-                    key={f}
-                    onPress={() => setFiltro(f)}
+              {(["todos", "pendiente", "cancelado"] as const).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  onPress={() => setFiltro(f)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor:
+                      filtro === f ? COLORS.accent : COLORS.surface,
+                    borderWidth: 1,
+                    borderColor: filtro === f ? COLORS.accent : COLORS.border,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
                     style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      borderRadius: 10,
-                      backgroundColor:
-                        filtro === f ? COLORS.accent : COLORS.surface,
-                      borderWidth: 1,
-                      borderColor: filtro === f ? COLORS.accent : COLORS.border,
-                      alignItems: "center",
+                      color: filtro === f ? "white" : COLORS.textMuted,
+                      fontSize: 10,
+                      fontWeight: "700",
+                      letterSpacing: 0.5,
                     }}
                   >
-                    <Text
-                      style={{
-                        color: filtro === f ? "white" : COLORS.textMuted,
-                        fontSize: 10,
-                        fontWeight: "700",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      {f === "todos"
-                        ? "TODOS"
-                        : f === "pendiente"
-                          ? "PEND."
-                          : f === "confirmado"
-                            ? "CONF."
-                            : "CANC."}
-                    </Text>
-                  </TouchableOpacity>
-                ),
-              )}
+                    {f === "todos"
+                      ? "TODOS"
+                      : f === "pendiente"
+                        ? "PENDIENTES"
+                        : "CANCELADOS"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             <View
@@ -763,8 +746,8 @@ export default function Dashboard() {
                 Turnos reservados
               </Text>
               <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>
-                {turnosFiltrados.length} resultado
-                {turnosFiltrados.length !== 1 ? "s" : ""}
+                {reservasFiltradas.length} resultado
+                {reservasFiltradas.length !== 1 ? "s" : ""}
               </Text>
             </View>
           </>
@@ -795,7 +778,7 @@ export default function Dashboard() {
           </View>
         }
         renderItem={({ item }) => (
-          <TurnoCard item={item} onCancelar={cancelarTurno} />
+          <ReservaCard item={item} onCancelar={cancelarReserva} />
         )}
       />
 

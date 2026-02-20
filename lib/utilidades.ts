@@ -1,15 +1,20 @@
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system/legacy";
-import { decode } from "base64-arraybuffer";
 import { supabase } from "./supabase";
+import { Alert } from "react-native";
 
 export const cambiarFoto = async (
   userId: string,
   setPerfil: (p: any) => void,
 ) => {
   try {
+    const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permiso.granted) {
+      Alert.alert("Permiso requerido", "Necesitamos acceso a tus fotos");
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images as any,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
@@ -17,57 +22,40 @@ export const cambiarFoto = async (
 
     if (result.canceled) return;
 
-    const imageUri = result.assets?.[0]?.uri;
-    if (!imageUri) return;
+    const uri = result.assets[0].uri;
 
-    const base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: "base64",
-    });
+    // ✅ FIX REAL RN → usar arrayBuffer en vez de blob
+    const response = await fetch(uri);
+    const arrayBuffer = await response.arrayBuffer();
 
-    const arrayBuffer = decode(base64);
+    const fileName = `${userId}.jpg`;
 
     const { error: uploadError } = await supabase.storage
       .from("avatars")
-      .upload(`perfil/${userId}.png`, arrayBuffer, {
-        contentType: "image/png",
+      .upload(fileName, arrayBuffer, {
+        contentType: "image/jpeg",
         upsert: true,
       });
 
-    if (uploadError) {
-      console.log("Error subiendo imagen:", uploadError.message);
-      return;
-    }
+    if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(`perfil/${userId}.png`);
+    const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
 
     const publicUrl = data.publicUrl;
-    const publicUrlConCache = `${publicUrl}?t=${Date.now()}`;
 
-    // Guarda la URL limpia en la base de datos ✅
     await supabase
-      .from("perfiles")
+      .from("profiles")
       .update({ avatar: publicUrl })
       .eq("id", userId);
 
-    // Muestra la URL con timestamp para forzar recarga ✅
-    setPerfil((prev: any) => ({ ...prev, avatar: publicUrlConCache }));
+    setPerfil((prev: any) => ({
+      ...prev,
+      avatar: publicUrl + "?t=" + Date.now(),
+    }));
 
-    const { error: updateError } = await supabase
-      .from("perfiles")
-      .update({ avatar: publicUrl })
-      .eq("id", userId);
-
-    if (updateError) {
-      console.log("Error guardando URL:", updateError.message);
-      return;
-    }
-
-    console.log("URL guardada:", publicUrl);
-    setPerfil((prev: any) => ({ ...prev, avatar: publicUrl }));
-    console.log("Foto subida correctamente ✅");
-  } catch (err) {
-    console.log("Error en cambiarFoto:", err);
+    Alert.alert("Listo", "Foto actualizada");
+  } catch (err: any) {
+    console.log("Error subiendo imagen:", err);
+    Alert.alert("Error", err.message ?? "No se pudo subir la imagen");
   }
 };

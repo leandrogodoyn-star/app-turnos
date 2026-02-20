@@ -30,21 +30,6 @@ const COLORS = {
   textMuted: "#4A4E6A",
 };
 
-function generarSlots(horaInicio: string, horaFin: string): string[] {
-  const slots: string[] = [];
-  const [hIni, mIni] = horaInicio.split(":").map(Number);
-  const [hFin, mFin] = horaFin.split(":").map(Number);
-  let mins = hIni * 60 + mIni;
-  const finMins = hFin * 60 + mFin;
-  while (mins < finMins) {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    mins += 30;
-  }
-  return slots;
-}
-
 function generarDias() {
   const dias = [];
   const hoy = new Date();
@@ -206,15 +191,20 @@ function HoraPicker({
   );
 }
 
+type SlotInfo = {
+  id: string;
+  hora: string;
+  disponible: boolean;
+  reservado: boolean;
+};
+
 export default function GestionarHorarios() {
   const [fechaSeleccionada, setFechaSeleccionada] = useState("");
-  const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
-  const [horariosBloqueados, setHorariosBloqueados] = useState<string[]>([]);
+  const [slots, setSlots] = useState<SlotInfo[]>([]);
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // Rango horario
   const [horaInicio, setHoraInicio] = useState("08:00");
   const [horaFin, setHoraFin] = useState("19:00");
   const [modalRango, setModalRango] = useState(false);
@@ -222,86 +212,99 @@ export default function GestionarHorarios() {
   const [horaFinTemp, setHoraFinTemp] = useState("19:00");
 
   const dias = generarDias();
-  const slots = generarSlots(horaInicio, horaFin);
 
-  // Obtener userId al montar
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data?.user?.id) setUserId(data.user.id);
     });
   }, []);
 
-  // Cargar ocupados y bloqueados cuando cambia la fecha
   useEffect(() => {
     if (!fechaSeleccionada || !userId) return;
-    const cargar = async () => {
-      setCargando(true);
-
-      // Turnos ya reservados por clientes
-      const { data: ocupados } = await supabase
-        .from("turnos")
-        .select("hora")
-        .eq("fecha", fechaSeleccionada)
-        .neq("estado", "cancelado")
-        .not("nombre_cliente", "is", null);
-
-      // Horarios bloqueados por el dueño
-      const { data: bloqueados } = await supabase
-        .from("horarios_bloqueados")
-        .select("hora")
-        .eq("user_id", userId)
-        .eq("fecha", fechaSeleccionada);
-
-      setHorariosOcupados(ocupados?.map((t) => t.hora.slice(0, 5)) ?? []);
-      setHorariosBloqueados(bloqueados?.map((b) => b.hora.slice(0, 5)) ?? []);
-      setCargando(false);
-    };
-    cargar();
+    cargarSlots();
   }, [fechaSeleccionada, userId]);
 
-  // Alternar bloqueo de un slot — guarda/elimina en Supabase al instante
-  const toggleBloqueo = async (hora: string) => {
+  const cargarSlots = async () => {
+    console.log("userId:", userId, "fecha:", fechaSeleccionada);
     if (!userId || !fechaSeleccionada) return;
-    // No se puede bloquear un turno ya reservado
-    if (horariosOcupados.includes(hora)) return;
+    setCargando(true);
 
-    setGuardando(hora);
-    const estaBloqueado = horariosBloqueados.includes(hora);
+    const resultado = await supabase
+      .from("horarios")
+      .select("id, hora, disponible")
+      .eq("admin_id", userId)
+      .eq("fecha", fechaSeleccionada)
+      .order("hora", { ascending: true });
 
-    if (estaBloqueado) {
-      // Desbloquear → eliminar fila
-      await supabase
-        .from("horarios_bloqueados")
-        .delete()
-        .eq("user_id", userId)
-        .eq("fecha", fechaSeleccionada)
-        .eq("hora", hora);
-      setHorariosBloqueados((prev) => prev.filter((h) => h !== hora));
-    } else {
-      // Bloquear → insertar fila
-      await supabase
-        .from("horarios_bloqueados")
-        .insert({ user_id: userId, fecha: fechaSeleccionada, hora });
-      setHorariosBloqueados((prev) => [...prev, hora]);
+    console.log("Data:", resultado.data?.length, "Error:", resultado.error);
+    const horarios = resultado.data;
+
+    if (!horarios || horarios.length === 0) {
+      setSlots([]);
+      setCargando(false);
+      return;
     }
+
+    const horarioIds = horarios.map((h) => h.id);
+    const { data: reservas } = await supabase
+      .from("reservas")
+      .select("horario_id")
+      .in("horario_id", horarioIds);
+
+    const reservadosSet = new Set(reservas?.map((r) => r.horario_id) ?? []);
+
+    const [hIni, mIni] = horaInicio.split(":").map(Number);
+    const [hFin, mFin] = horaFin.split(":").map(Number);
+    const inicioMins = hIni * 60 + mIni;
+    const finMins = hFin * 60 + mFin;
+
+    const slotsFiltrados: SlotInfo[] = horarios
+      .filter((h) => {
+        const [hh, mm] = h.hora.slice(0, 5).split(":").map(Number);
+        const mins = hh * 60 + mm;
+        return mins >= inicioMins && mins < finMins;
+      })
+      .map((h) => ({
+        id: h.id,
+        hora: h.hora.slice(0, 5),
+        disponible: h.disponible,
+        reservado: reservadosSet.has(h.id),
+      }));
+
+    setSlots(slotsFiltrados);
+    setCargando(false);
+  };
+
+  const toggleSlot = async (slot: SlotInfo) => {
+    if (slot.reservado) return;
+    setGuardando(slot.id);
+
+    const nuevoEstado = !slot.disponible;
+    await supabase
+      .from("horarios")
+      .update({ disponible: nuevoEstado })
+      .eq("id", slot.id);
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.id === slot.id ? { ...s, disponible: nuevoEstado } : s,
+      ),
+    );
     setGuardando(null);
   };
 
-  const getSlotEstado = (slot: string) => {
-    if (horariosOcupados.includes(slot)) return "ocupado";
-    if (horariosBloqueados.includes(slot)) return "bloqueado";
+  const getEstado = (slot: SlotInfo) => {
+    if (slot.reservado) return "ocupado";
+    if (!slot.disponible) return "bloqueado";
     return "disponible";
   };
 
   const totalDisponibles = slots.filter(
-    (s) => getSlotEstado(s) === "disponible",
+    (s) => getEstado(s) === "disponible",
   ).length;
   const totalBloqueados = slots.filter(
-    (s) => getSlotEstado(s) === "bloqueado",
+    (s) => getEstado(s) === "bloqueado",
   ).length;
-  const totalOcupados = slots.filter(
-    (s) => getSlotEstado(s) === "ocupado",
-  ).length;
+  const totalOcupados = slots.filter((s) => getEstado(s) === "ocupado").length;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -381,7 +384,6 @@ export default function GestionarHorarios() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-        {/* Selector de fecha */}
         <Text
           style={{
             color: COLORS.textMuted,
@@ -483,6 +485,30 @@ export default function GestionarHorarios() {
               style={{ color: COLORS.textMuted, marginTop: 12, fontSize: 13 }}
             >
               Cargando horarios...
+            </Text>
+          </View>
+        ) : slots.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.surface,
+              borderRadius: 16,
+              padding: 40,
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              borderStyle: "dashed",
+            }}
+          >
+            <Text style={{ fontSize: 36, marginBottom: 12 }}>⏳</Text>
+            <Text
+              style={{
+                color: COLORS.textSecondary,
+                fontSize: 14,
+                textAlign: "center",
+              }}
+            >
+              No hay horarios generados para este día.{"\n"}El sistema los
+              genera automáticamente cada noche.
             </Text>
           </View>
         ) : (
@@ -595,8 +621,8 @@ export default function GestionarHorarios() {
             {/* Grid de slots */}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {slots.map((slot) => {
-                const estado = getSlotEstado(slot);
-                const estaGuardando = guardando === slot;
+                const estado = getEstado(slot);
+                const estaGuardando = guardando === slot.id;
                 const esOcupado = estado === "ocupado";
 
                 const estilos = {
@@ -619,9 +645,9 @@ export default function GestionarHorarios() {
 
                 return (
                   <TouchableOpacity
-                    key={slot}
+                    key={slot.id}
                     disabled={esOcupado || estaGuardando}
-                    onPress={() => toggleBloqueo(slot)}
+                    onPress={() => toggleSlot(slot)}
                     style={{
                       width: "22%",
                       borderRadius: 12,
@@ -643,7 +669,7 @@ export default function GestionarHorarios() {
                           fontWeight: "600",
                         }}
                       >
-                        {slot}
+                        {slot.hora}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -725,6 +751,7 @@ export default function GestionarHorarios() {
                 setHoraInicio(horaInicioTemp);
                 setHoraFin(horaFinTemp);
                 setModalRango(false);
+                if (fechaSeleccionada) cargarSlots();
               }}
               style={{
                 backgroundColor: COLORS.accent,
