@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const twilio = require("twilio");
+const cron = require("node-cron");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
@@ -224,7 +225,6 @@ async function procesarMensaje(from, text) {
 
         const telefono = from.replace("whatsapp:", "");
 
-        // Buscar el horario_id
         const { data: horario } = await supabase
           .from("horarios")
           .select("id")
@@ -365,6 +365,21 @@ async function verificarDisponibilidad(negocioId, fecha, hora) {
 
 // ─── Helpers generales ────────────────────────────────────────────────────────
 
+function generarSlots(horaInicio, horaFin) {
+  const slots = [];
+  const [hIni, mIni] = horaInicio.split(":").map(Number);
+  const [hFin, mFin] = horaFin.split(":").map(Number);
+  let mins = hIni * 60 + mIni;
+  const finMins = hFin * 60 + mFin;
+  while (mins < finMins) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    mins += 30;
+  }
+  return slots;
+}
+
 function formatearFecha(fecha) {
   const [yyyy, mm, dd] = fecha.split("-");
   const meses = [
@@ -397,6 +412,52 @@ async function enviarMensaje(to, mensaje) {
     console.error("Error enviando mensaje:", err?.message || err);
   }
 }
+
+// ─── Cron: generar horarios cada día a medianoche ─────────────────────────────
+
+async function generarHorarios() {
+  console.log("🕐 Generando horarios automáticamente...");
+
+  const { data: admins } = await supabase.from("profiles").select("id, nombre");
+  if (!admins || admins.length === 0) {
+    console.log("No se encontraron admins");
+    return;
+  }
+
+  const slots = generarSlots("08:00", "19:00");
+  const hoy = new Date();
+
+  for (const admin of admins) {
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(hoy);
+      d.setDate(hoy.getDate() + i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const fecha = `${yyyy}-${mm}-${dd}`;
+
+      for (const hora of slots) {
+        await supabase
+          .from("horarios")
+          .insert({ admin_id: admin.id, fecha, hora, disponible: true })
+          .then(() => {})
+          .catch(() => {}); // ignorar si ya existe
+      }
+    }
+    console.log(`✅ Horarios generados para ${admin.nombre}`);
+  }
+
+  console.log("🎉 Generación completada");
+}
+
+// Ejecutar al iniciar el servidor
+generarHorarios();
+
+// Ejecutar todos los días a medianoche
+cron.schedule("0 0 * * *", () => {
+  console.log("⏰ Cron ejecutándose...");
+  generarHorarios();
+});
 
 // ─── Iniciar servidor ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
