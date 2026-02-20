@@ -1,7 +1,6 @@
 const twilioService = require("./twilio.service");
 const db = require("../config/supabase");
 
-// Sesiones en memoria
 const sesiones = {};
 
 exports.processMessage = async (from, text) => {
@@ -11,7 +10,7 @@ exports.processMessage = async (from, text) => {
     delete sesiones[from];
     return twilioService.send(
       from,
-      "🔄 Conversación reiniciada. Escribí el código de tu negocio para empezar.",
+      "Conversacion reiniciada. Escribi el codigo de tu negocio para empezar.",
     );
   }
 
@@ -20,10 +19,10 @@ exports.processMessage = async (from, text) => {
       if (!text.startsWith("#")) {
         return twilioService.send(
           from,
-          "👋 ¡Hola! Bienvenido al sistema de turnos.\n\n" +
-            "Para comenzar, escribí el *código de tu negocio*.\n" +
-            "Ejemplo: *#lopez123*\n\n" +
-            "Si no lo tenés, pedíselo al negocio.",
+          "Hola! Bienvenido al sistema de turnos.\n\n" +
+            "Para comenzar, escribi el codigo de tu negocio.\n" +
+            "Ejemplo: #lopez123\n\n" +
+            "Si no lo tenes, pediselo al negocio.",
         );
       }
 
@@ -37,8 +36,8 @@ exports.processMessage = async (from, text) => {
       if (!negocio) {
         return twilioService.send(
           from,
-          "❌ Código de negocio no encontrado.\n" +
-            "Verificá que esté bien escrito e intentá de nuevo.",
+          "Codigo de negocio no encontrado.\n" +
+            "Verifica que este bien escrito e intenta de nuevo.",
         );
       }
 
@@ -49,7 +48,7 @@ exports.processMessage = async (from, text) => {
       };
       return twilioService.send(
         from,
-        `✅ Conectado con *${negocio.nombre}*.\n\n¿Cuál es tu nombre completo?`,
+        `Conectado con ${negocio.nombre}.\n\nCual es tu nombre completo?`,
       );
     }
 
@@ -61,7 +60,7 @@ exports.processMessage = async (from, text) => {
         delete sesiones[from];
         return twilioService.send(
           from,
-          "😕 No hay turnos disponibles por el momento. Intentá más tarde.",
+          "No hay turnos disponibles por el momento. Intenta mas tarde.",
         );
       }
 
@@ -71,7 +70,7 @@ exports.processMessage = async (from, text) => {
       sesiones[from] = { ...sesiones[from], fechasDisponibles: fechas };
       return twilioService.send(
         from,
-        `Hola *${text}*! 😊\n\n¿Qué día preferís?\n\n${lista}\n\nRespondé con el *número* de la opción.`,
+        `Hola ${text}!\n\nQue dia preferis?\n\n${lista}\n\nResponde con el numero de la opcion.`,
       );
     }
 
@@ -82,7 +81,7 @@ exports.processMessage = async (from, text) => {
       if (isNaN(idx) || idx < 0 || idx >= fechas.length) {
         return twilioService.send(
           from,
-          `Por favor respondé con un número del 1 al ${fechas.length}.`,
+          `Por favor responde con un numero del 1 al ${fechas.length}.`,
         );
       }
 
@@ -98,7 +97,7 @@ exports.processMessage = async (from, text) => {
           .join("\n");
         return twilioService.send(
           from,
-          `😕 No quedan horarios para ese día. Elegí otro.\n\n${lista}`,
+          `No quedan horarios para ese dia. Elige otro.\n\n${lista}`,
         );
       }
 
@@ -111,7 +110,7 @@ exports.processMessage = async (from, text) => {
       };
       return twilioService.send(
         from,
-        `📅 *${formatearFecha(fechaElegida)}*\n\nHorarios disponibles:\n\n${lista}\n\nRespondé con el *número* del horario.`,
+        `${formatearFecha(fechaElegida)}\n\nHorarios disponibles:\n\n${lista}\n\nResponde con el numero del horario.`,
       );
     }
 
@@ -122,7 +121,7 @@ exports.processMessage = async (from, text) => {
       if (isNaN(idx) || idx < 0 || idx >= horarios.length) {
         return twilioService.send(
           from,
-          `Por favor respondé con un número del 1 al ${horarios.length}.`,
+          `Por favor responde con un numero del 1 al ${horarios.length}.`,
         );
       }
 
@@ -130,7 +129,7 @@ exports.processMessage = async (from, text) => {
       sesiones[from] = { ...sesion, paso: "pedir_servicio", hora: horaElegida };
       return twilioService.send(
         from,
-        `🕐 Horario elegido: *${horaElegida}*\n\n¿Qué servicio necesitás?\nEjemplo: corte, color, mechas, etc.`,
+        `Horario elegido: ${horaElegida}\n\nQue servicio necesitas?\nEjemplo: corte, color, mechas, etc.`,
       );
     }
 
@@ -139,17 +138,17 @@ exports.processMessage = async (from, text) => {
       const s = sesiones[from];
       return twilioService.send(
         from,
-        "📋 *Resumen de tu turno:*\n\n" +
-          `👤 Nombre: ${s.nombre}\n` +
-          `📅 Fecha: ${formatearFecha(s.fecha)}\n` +
-          `🕐 Hora: ${s.hora}\n` +
-          `✂️ Servicio: ${s.servicio}\n\n` +
-          "¿Confirmás el turno?\n*1. Sí, confirmar*\n*2. No, cancelar*",
+        "Resumen de tu turno:\n\n" +
+          `Nombre: ${s.nombre}\n` +
+          `Fecha: ${formatearFecha(s.fecha)}\n` +
+          `Hora: ${s.hora}\n` +
+          `Servicio: ${s.servicio}\n\n` +
+          "Confirmas el turno?\n1. Si, confirmar\n2. No, cancelar",
       );
     }
 
     case "confirmar": {
-      if (text === "1" || text === "si" || text === "sí") {
+      if (text === "1" || text === "si") {
         const s = sesiones[from];
 
         const disponible = await verificarDisponibilidad(
@@ -161,7 +160,7 @@ exports.processMessage = async (from, text) => {
           delete sesiones[from];
           return twilioService.send(
             from,
-            "😕 Lo sentimos, ese horario acaba de ser tomado.\nEscribí *reiniciar* para elegir otro.",
+            "Lo sentimos, ese horario acaba de ser tomado.\nEscribi reiniciar para elegir otro.",
           );
         }
 
@@ -179,7 +178,7 @@ exports.processMessage = async (from, text) => {
           delete sesiones[from];
           return twilioService.send(
             from,
-            "❌ No se encontró el horario. Intentá de nuevo.",
+            "No se encontro el horario. Intenta de nuevo.",
           );
         }
 
@@ -194,28 +193,28 @@ exports.processMessage = async (from, text) => {
           delete sesiones[from];
           return twilioService.send(
             from,
-            "❌ Hubo un error al crear el turno. Intentá de nuevo.",
+            "Hubo un error al crear el turno. Intenta de nuevo.",
           );
         }
 
         delete sesiones[from];
         return twilioService.send(
           from,
-          `✅ *¡Turno confirmado!*\n\n` +
-            `📅 ${formatearFecha(s.fecha)} a las ${s.hora}\n` +
-            `✂️ ${s.servicio}\n\n` +
-            "Te esperamos 🙌\n\n_Si necesitás cancelar, contactá directamente al negocio._",
+          `Turno confirmado!\n\n` +
+            `Fecha: ${formatearFecha(s.fecha)} a las ${s.hora}\n` +
+            `Servicio: ${s.servicio}\n\n` +
+            "Te esperamos!",
         );
       } else if (text === "2" || text === "no") {
         delete sesiones[from];
         return twilioService.send(
           from,
-          "👌 Turno cancelado. Escribí el código del negocio cuando quieras intentar de nuevo.",
+          "Turno cancelado. Escribi el codigo del negocio cuando quieras intentar de nuevo.",
         );
       } else {
         return twilioService.send(
           from,
-          "Respondé *1* para confirmar o *2* para cancelar.",
+          "Responde 1 para confirmar o 2 para cancelar.",
         );
       }
     }
@@ -224,13 +223,11 @@ exports.processMessage = async (from, text) => {
       delete sesiones[from];
       return twilioService.send(
         from,
-        "Escribí el código del negocio para empezar. Ejemplo: *#lopez123*",
+        "Escribi el codigo del negocio para empezar. Ejemplo: #lopez123",
       );
     }
   }
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function obtenerFechasDisponibles(negocioId) {
   const hoy = new Date();
@@ -311,7 +308,7 @@ function formatearFecha(fecha) {
     "Nov",
     "Dic",
   ];
-  const diasSemana = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const diasSemana = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
   const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
   return `${diasSemana[d.getDay()]} ${dd} de ${meses[parseInt(mm) - 1]}`;
 }
