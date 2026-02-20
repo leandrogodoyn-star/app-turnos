@@ -65,9 +65,8 @@ async function procesarMensaje(from, text) {
         return;
       }
 
-      const codigo = text.slice(1);
       const { data: negocio } = await supabase
-        .from("perfiles")
+        .from("profiles")
         .select("id, nombre")
         .eq("codigo_bot", codigo)
         .single();
