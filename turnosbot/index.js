@@ -17,18 +17,16 @@ const twilioClient = twilio(
   process.env.TWILIO_AUTH_TOKEN,
 );
 
-// ─── Health check ────────────────────────────────────────────────────────────
+// ─── Health check ─────────────────────────────────────────────────────────────
 app.get("/", (req, res) => res.send("Bot corriendo ✅"));
 
-// ─── Recibir mensajes de Twilio ──────────────────────────────────────────────
+// ─── Recibir mensajes de Twilio ───────────────────────────────────────────────
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
-
   try {
-    const from = req.body?.From; // formato: whatsapp:+5493329311017
+    const from = req.body?.From?.replace(/\s/g, "");
     const text = req.body?.Body?.trim().toLowerCase();
     if (!from || !text) return;
-
     console.log(`📩 Mensaje de ${from}: ${text}`);
     await procesarMensaje(from, text);
   } catch (err) {
@@ -36,10 +34,10 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ─── Estados de conversación (en memoria) ────────────────────────────────────
+// ─── Estados de conversación (en memoria) ─────────────────────────────────────
 const sesiones = {};
 
-// ─── Lógica del bot ──────────────────────────────────────────────────────────
+// ─── Lógica del bot ───────────────────────────────────────────────────────────
 async function procesarMensaje(from, text) {
   const sesion = sesiones[from] || { paso: "inicio" };
 
@@ -224,21 +222,36 @@ async function procesarMensaje(from, text) {
           return;
         }
 
-        // Extraer solo el número de teléfono (sacar "whatsapp:+")
         const telefono = from.replace("whatsapp:", "");
 
-        const { error } = await supabase.from("turnos").insert({
-          user_id: s.negocioId,
-          fecha: s.fecha,
-          hora: s.hora,
-          estado: "pendiente",
-          nombre_cliente: s.nombre,
-          telefono,
-          servicio: s.servicio,
+        // Buscar el horario_id
+        const { data: horario } = await supabase
+          .from("horarios")
+          .select("id")
+          .eq("admin_id", s.negocioId)
+          .eq("fecha", s.fecha)
+          .eq("hora", s.hora)
+          .single();
+
+        if (!horario) {
+          console.error("Horario no encontrado:", s.fecha, s.hora);
+          await enviarMensaje(
+            from,
+            "❌ No se encontró el horario. Intentá de nuevo.",
+          );
+          delete sesiones[from];
+          return;
+        }
+
+        const { error } = await supabase.from("reservas").insert({
+          admin_id: s.negocioId,
+          horario_id: horario.id,
+          cliente_nombre: s.nombre,
+          cliente_telefono: telefono,
         });
 
         if (error) {
-          console.error("Error insertando turno:", error);
+          console.error("Error insertando reserva:", error);
           await enviarMensaje(
             from,
             "❌ Hubo un error al crear el turno. Intentá de nuevo.",
@@ -304,70 +317,53 @@ async function obtenerFechasDisponibles(negocioId) {
 }
 
 async function obtenerHorariosDisponibles(negocioId, fecha) {
-  const todosLosSlots = generarSlots("08:00", "19:00");
-
-  const { data: bloqueados } = await supabase
-    .from("horarios_bloqueados")
-    .select("hora")
-    .eq("user_id", negocioId)
-    .eq("fecha", fecha);
-
-  const { data: ocupados } = await supabase
-    .from("turnos")
-    .select("hora")
-    .eq("user_id", negocioId)
+  const { data: horarios } = await supabase
+    .from("horarios")
+    .select("id, hora")
+    .eq("admin_id", negocioId)
     .eq("fecha", fecha)
-    .neq("estado", "cancelado");
+    .eq("disponible", true);
 
-  const bloqueadosSet = new Set(
-    bloqueados?.map((b) => b.hora.slice(0, 5)) ?? [],
-  );
-  const ocupadosSet = new Set(ocupados?.map((t) => t.hora.slice(0, 5)) ?? []);
+  if (!horarios || horarios.length === 0) return [];
 
-  return todosLosSlots.filter(
-    (s) => !bloqueadosSet.has(s) && !ocupadosSet.has(s),
-  );
+  const { data: reservados } = await supabase
+    .from("reservas")
+    .select("horario_id")
+    .in(
+      "horario_id",
+      horarios.map((h) => h.id),
+    );
+
+  const reservadosSet = new Set(reservados?.map((r) => r.horario_id) ?? []);
+
+  return horarios
+    .filter((h) => !reservadosSet.has(h.id))
+    .map((h) => h.hora.slice(0, 5))
+    .sort();
 }
 
 async function verificarDisponibilidad(negocioId, fecha, hora) {
-  const { data: bloqueado } = await supabase
-    .from("horarios_bloqueados")
+  const { data: horario } = await supabase
+    .from("horarios")
     .select("id")
-    .eq("user_id", negocioId)
+    .eq("admin_id", negocioId)
     .eq("fecha", fecha)
     .eq("hora", hora)
+    .eq("disponible", true)
     .single();
 
-  if (bloqueado) return false;
+  if (!horario) return false;
 
-  const { data: ocupado } = await supabase
-    .from("turnos")
+  const { data: reservado } = await supabase
+    .from("reservas")
     .select("id")
-    .eq("user_id", negocioId)
-    .eq("fecha", fecha)
-    .eq("hora", hora)
-    .neq("estado", "cancelado")
+    .eq("horario_id", horario.id)
     .single();
 
-  return !ocupado;
+  return !reservado;
 }
 
 // ─── Helpers generales ────────────────────────────────────────────────────────
-
-function generarSlots(horaInicio, horaFin) {
-  const slots = [];
-  const [hIni, mIni] = horaInicio.split(":").map(Number);
-  const [hFin, mFin] = horaFin.split(":").map(Number);
-  let mins = hIni * 60 + mIni;
-  const finMins = hFin * 60 + mFin;
-  while (mins < finMins) {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    mins += 30;
-  }
-  return slots;
-}
 
 function formatearFecha(fecha) {
   const [yyyy, mm, dd] = fecha.split("-");
