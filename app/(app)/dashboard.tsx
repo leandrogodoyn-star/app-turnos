@@ -1,11 +1,13 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
   Linking,
   Modal,
+  PanResponder,
   StatusBar,
   Text,
   TextInput,
@@ -14,6 +16,8 @@ import {
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { cambiarFoto } from "../../lib/utilidades";
+
+type EstadoReserva = "pendiente" | "completado";
 
 type Reserva = {
   id: string;
@@ -24,7 +28,7 @@ type Reserva = {
   servicio?: string;
   fecha?: string;
   hora?: string;
-  estado: "pendiente" | "cancelado";
+  estado: EstadoReserva;
 };
 
 const COLORS = {
@@ -48,10 +52,20 @@ const COLORS = {
   textMuted: "#4A4E6A",
 };
 
-function Badge({ cancelado }: { cancelado: boolean }) {
-  const config = cancelado
-    ? { color: COLORS.danger, bg: COLORS.dangerDim, label: "Cancelado" }
-    : { color: COLORS.warning, bg: COLORS.warningDim, label: "Pendiente" };
+function Badge({ estado }: { estado: EstadoReserva }) {
+  const config = {
+    pendiente: {
+      color: COLORS.warning,
+      bg: COLORS.warningDim,
+      label: "Pendiente",
+    },
+    completado: {
+      color: COLORS.success,
+      bg: COLORS.successDim,
+      label: "Completado",
+    },
+  }[estado];
+
   return (
     <View
       style={{
@@ -111,13 +125,52 @@ function ReservaCard({
   item,
   onCancelar,
   onCompletar,
+  onBorrar,
 }: {
   item: Reserva;
   onCancelar: (id: string, horarioId: string) => void;
   onCompletar: (id: string, horarioId: string) => void;
+  onBorrar: (id: string) => void;
 }) {
-  const esCancelado = item.estado === "cancelado";
+  const esPendiente = item.estado === "pendiente";
+  const esCompletado = item.estado === "completado";
   const [expandido, setExpandido] = useState(false);
+
+  const translateX = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        esCompletado && Math.abs(g.dx) > 10,
+      onPanResponderMove: (_, g) => {
+        if (esCompletado && g.dx > 0) translateX.setValue(g.dx);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (esCompletado && g.dx > 80) {
+          Alert.alert("Borrar turno", "¿Borrar este turno completado?", [
+            {
+              text: "No",
+              style: "cancel",
+              onPress: () =>
+                Animated.spring(translateX, {
+                  toValue: 0,
+                  useNativeDriver: true,
+                }).start(),
+            },
+            {
+              text: "Sí, borrar",
+              style: "destructive",
+              onPress: () => onBorrar(item.id),
+            },
+          ]);
+        } else {
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    }),
+  ).current;
 
   const abrirWhatsApp = () => {
     if (!item.cliente_telefono) return;
@@ -131,7 +184,7 @@ function ReservaCard({
   const confirmarCancelacion = () => {
     Alert.alert(
       "Cancelar turno",
-      `¿Cancelás el turno de ${item.cliente_nombre || "este cliente"} a las ${item.hora}?`,
+      `¿Cancelás el turno de ${item.cliente_nombre || "este cliente"} a las ${item.hora}? El horario quedará libre para otra persona.`,
       [
         { text: "No", style: "cancel" },
         {
@@ -157,260 +210,279 @@ function ReservaCard({
     );
   };
 
-  return (
-    <TouchableOpacity
-      onPress={() => setExpandido(!expandido)}
-      activeOpacity={0.85}
-      style={{
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        overflow: "hidden",
-        opacity: esCancelado ? 0.6 : 1,
-      }}
-    >
-      {/* Barra acento izquierda */}
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 3,
-          backgroundColor: esCancelado ? COLORS.danger : COLORS.accent,
-          borderTopLeftRadius: 16,
-          borderBottomLeftRadius: 16,
-        }}
-      />
+  const barColor =
+    item.estado === "completado" ? COLORS.success : COLORS.accent;
 
-      {/* Fila principal */}
-      <View
+  return (
+    <Animated.View
+      style={{ transform: [{ translateX }] }}
+      {...panResponder.panHandlers}
+    >
+      <TouchableOpacity
+        onPress={() => setExpandido(!expandido)}
+        activeOpacity={0.85}
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          padding: 14,
-          paddingLeft: 20,
+          backgroundColor: COLORS.surface,
+          borderRadius: 16,
+          marginBottom: 12,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          overflow: "hidden",
+          opacity: esCompletado ? 0.8 : 1,
         }}
       >
-        <Avatar nombre={item.cliente_nombre} />
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text
-            style={{
-              color: COLORS.textPrimary,
-              fontSize: 15,
-              fontWeight: "700",
-              marginBottom: 3,
-            }}
-          >
-            {item.cliente_nombre || "Cliente sin nombre"}
-          </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-              🕐 {item.hora}
-            </Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>•</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-              📅 {item.fecha}
-            </Text>
-          </View>
-          {item.servicio && (
-            <Text
-              style={{ color: COLORS.accentLight, fontSize: 12, marginTop: 3 }}
-            >
-              ✂️ {item.servicio}
-            </Text>
-          )}
-        </View>
-        <View style={{ alignItems: "flex-end", gap: 6 }}>
-          <Badge cancelado={esCancelado} />
-          <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
-            {expandido ? "▲" : "▼"}
-          </Text>
-        </View>
-      </View>
-
-      {/* Detalle expandido */}
-      {expandido && (
         <View
           style={{
-            borderTopWidth: 1,
-            borderTopColor: COLORS.border,
-            padding: 16,
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            backgroundColor: barColor,
+            borderTopLeftRadius: 16,
+            borderBottomLeftRadius: 16,
+          }}
+        />
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            padding: 14,
             paddingLeft: 20,
-            gap: 10,
           }}
         >
-          {/* Servicio */}
-          {item.servicio && (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+          <Avatar nombre={item.cliente_nombre} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text
+              style={{
+                color: COLORS.textPrimary,
+                fontSize: 15,
+                fontWeight: "700",
+                marginBottom: 3,
+              }}
             >
-              <View
+              {item.cliente_nombre || "Cliente sin nombre"}
+            </Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
+              <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                🕐 {item.hora}
+              </Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>•</Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+                📅 {item.fecha}
+              </Text>
+            </View>
+            {item.servicio && (
+              <Text
                 style={{
-                  backgroundColor: COLORS.accentDim,
-                  borderRadius: 8,
-                  padding: 8,
-                  borderWidth: 1,
-                  borderColor: COLORS.accent + "33",
+                  color: COLORS.accentLight,
+                  fontSize: 12,
+                  marginTop: 3,
                 }}
               >
-                <Text style={{ fontSize: 16 }}>✂️</Text>
-              </View>
-              <View>
-                <Text
-                  style={{
-                    color: COLORS.textMuted,
-                    fontSize: 11,
-                    letterSpacing: 0.8,
-                  }}
-                >
-                  SERVICIO
-                </Text>
-                <Text
-                  style={{
-                    color: COLORS.textPrimary,
-                    fontSize: 14,
-                    fontWeight: "600",
-                  }}
-                >
-                  {item.servicio}
-                </Text>
-              </View>
-            </View>
-          )}
+                ✂️ {item.servicio}
+              </Text>
+            )}
+          </View>
+          <View style={{ alignItems: "flex-end", gap: 6 }}>
+            <Badge estado={item.estado} />
+            <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+              {expandido ? "▲" : "▼"}
+            </Text>
+          </View>
+        </View>
 
-          {/* Teléfono */}
-          {item.cliente_telefono && (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
+        {expandido && (
+          <View
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: COLORS.border,
+              padding: 16,
+              paddingLeft: 20,
+              gap: 10,
+            }}
+          >
+            {item.servicio && (
               <View
-                style={{
-                  backgroundColor: COLORS.whatsappDim,
-                  borderRadius: 8,
-                  padding: 8,
-                  borderWidth: 1,
-                  borderColor: COLORS.whatsapp + "33",
-                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
               >
-                <Text style={{ fontSize: 16 }}>📱</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
+                <View
                   style={{
-                    color: COLORS.textMuted,
-                    fontSize: 11,
-                    letterSpacing: 0.8,
+                    backgroundColor: COLORS.accentDim,
+                    borderRadius: 8,
+                    padding: 8,
+                    borderWidth: 1,
+                    borderColor: COLORS.accent + "33",
                   }}
                 >
-                  TELÉFONO
-                </Text>
-                <Text
-                  style={{
-                    color: COLORS.textPrimary,
-                    fontSize: 14,
-                    fontWeight: "600",
-                  }}
-                >
-                  {item.cliente_telefono}
-                </Text>
+                  <Text style={{ fontSize: 16 }}>✂️</Text>
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      color: COLORS.textMuted,
+                      fontSize: 11,
+                      letterSpacing: 0.8,
+                    }}
+                  >
+                    SERVICIO
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontSize: 14,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {item.servicio}
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            )}
 
-          {/* Acciones */}
-          {!esCancelado && (
-            <View style={{ gap: 8, marginTop: 4 }}>
-              {/* Fila 1: WhatsApp + Completado */}
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                {item.cliente_telefono && (
+            {item.cliente_telefono && (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
+                <View
+                  style={{
+                    backgroundColor: COLORS.whatsappDim,
+                    borderRadius: 8,
+                    padding: 8,
+                    borderWidth: 1,
+                    borderColor: COLORS.whatsapp + "33",
+                  }}
+                >
+                  <Text style={{ fontSize: 16 }}>📱</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: COLORS.textMuted,
+                      fontSize: 11,
+                      letterSpacing: 0.8,
+                    }}
+                  >
+                    TELÉFONO
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontSize: 14,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {item.cliente_telefono}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {esPendiente && (
+              <View style={{ gap: 8, marginTop: 4 }}>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {item.cliente_telefono && (
+                    <TouchableOpacity
+                      onPress={abrirWhatsApp}
+                      style={{
+                        flex: 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        backgroundColor: COLORS.whatsappDim,
+                        borderRadius: 10,
+                        padding: 10,
+                        borderWidth: 1,
+                        borderColor: COLORS.whatsapp + "44",
+                      }}
+                    >
+                      <Text style={{ fontSize: 15 }}>💬</Text>
+                      <Text
+                        style={{
+                          color: COLORS.whatsapp,
+                          fontSize: 13,
+                          fontWeight: "600",
+                        }}
+                      >
+                        WhatsApp
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
-                    onPress={abrirWhatsApp}
+                    onPress={confirmarCompletar}
                     style={{
                       flex: 1,
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 6,
-                      backgroundColor: COLORS.whatsappDim,
+                      backgroundColor: COLORS.successDim,
                       borderRadius: 10,
                       padding: 10,
                       borderWidth: 1,
-                      borderColor: COLORS.whatsapp + "44",
+                      borderColor: COLORS.success + "44",
                     }}
                   >
-                    <Text style={{ fontSize: 15 }}>💬</Text>
+                    <Text style={{ fontSize: 15 }}>✅</Text>
                     <Text
                       style={{
-                        color: COLORS.whatsapp,
+                        color: COLORS.success,
                         fontSize: 13,
                         fontWeight: "600",
                       }}
                     >
-                      WhatsApp
+                      Completado
                     </Text>
                   </TouchableOpacity>
-                )}
+                </View>
                 <TouchableOpacity
-                  onPress={confirmarCompletar}
+                  onPress={confirmarCancelacion}
                   style={{
-                    flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 6,
-                    backgroundColor: COLORS.successDim,
+                    backgroundColor: COLORS.dangerDim,
                     borderRadius: 10,
                     padding: 10,
                     borderWidth: 1,
-                    borderColor: COLORS.success + "44",
+                    borderColor: COLORS.danger + "44",
                   }}
                 >
-                  <Text style={{ fontSize: 15 }}>✅</Text>
+                  <Text style={{ fontSize: 15 }}>✕</Text>
                   <Text
                     style={{
-                      color: COLORS.success,
+                      color: COLORS.danger,
                       fontSize: 13,
                       fontWeight: "600",
                     }}
                   >
-                    Completado
+                    Cancelar turno
                   </Text>
                 </TouchableOpacity>
               </View>
-              {/* Fila 2: Cancelar */}
-              <TouchableOpacity
-                onPress={confirmarCancelacion}
+            )}
+
+            {esCompletado && (
+              <Text
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  backgroundColor: COLORS.dangerDim,
-                  borderRadius: 10,
-                  padding: 10,
-                  borderWidth: 1,
-                  borderColor: COLORS.danger + "44",
+                  color: COLORS.textMuted,
+                  fontSize: 12,
+                  textAlign: "center",
+                  marginTop: 4,
                 }}
               >
-                <Text style={{ fontSize: 15 }}>✕</Text>
-                <Text
-                  style={{
-                    color: COLORS.danger,
-                    fontSize: 13,
-                    fontWeight: "600",
-                  }}
-                >
-                  Cancelar turno
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      )}
-    </TouchableOpacity>
+                Deslizá hacia la derecha para borrar
+              </Text>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -420,7 +492,7 @@ export default function Dashboard() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [editarNombre, setEditarNombre] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
-  const [filtro, setFiltro] = useState<"todos" | "pendiente" | "cancelado">(
+  const [filtro, setFiltro] = useState<"todos" | "pendiente" | "completado">(
     "todos",
   );
 
@@ -439,6 +511,7 @@ export default function Dashboard() {
         cliente_nombre,
         cliente_telefono,
         servicio,
+        estado,
         horarios (fecha, hora, disponible)
       `,
       )
@@ -455,7 +528,9 @@ export default function Dashboard() {
         servicio: r.servicio,
         fecha: r.horarios?.fecha,
         hora: r.horarios?.hora?.slice(0, 5),
-        estado: r.horarios?.disponible === false ? "cancelado" : "pendiente",
+        estado: (r.estado === "completado"
+          ? "completado"
+          : "pendiente") as EstadoReserva,
       }));
 
       reservasFormateadas.sort((a, b) => {
@@ -497,7 +572,6 @@ export default function Dashboard() {
     return () => clearInterval(intervalo);
   }, []);
 
-  // Cancelar: libera el horario para que otro pueda reservar
   const cancelarReserva = async (id: string, horarioId: string) => {
     await supabase.from("reservas").delete().eq("id", id);
     await supabase
@@ -506,14 +580,26 @@ export default function Dashboard() {
       .eq("id", horarioId);
     setReservas((prev) => prev.filter((r) => r.id !== id));
   };
-  // Completado: borra el turno y deshabilita el horario
+
   const completarReserva = async (id: string, horarioId: string) => {
-    await supabase.from("reservas").delete().eq("id", id);
+    await supabase
+      .from("reservas")
+      .update({ estado: "completado" })
+      .eq("id", id);
     await supabase
       .from("horarios")
       .update({ disponible: false })
       .eq("id", horarioId);
-    cargarReservas();
+    setReservas((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, estado: "completado" as EstadoReserva } : r,
+      ),
+    );
+  };
+
+  const borrarReserva = async (id: string) => {
+    await supabase.from("reservas").delete().eq("id", id);
+    setReservas((prev) => prev.filter((r) => r.id !== id));
   };
 
   const handleCambiarNombre = async () => {
@@ -534,7 +620,7 @@ export default function Dashboard() {
   const reservasFiltradas =
     filtro === "todos" ? reservas : reservas.filter((r) => r.estado === filtro);
   const pendientes = reservas.filter((r) => r.estado === "pendiente").length;
-  const cancelados = reservas.filter((r) => r.estado === "cancelado").length;
+  const completados = reservas.filter((r) => r.estado === "completado").length;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -614,7 +700,6 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Menú */}
         {menuVisible && (
           <View
             style={{
@@ -713,22 +798,16 @@ export default function Dashboard() {
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
               {[
                 {
-                  label: "Total",
-                  value: reservas.length,
-                  color: COLORS.accent,
-                  bg: COLORS.accentDim,
-                },
-                {
                   label: "Pendientes",
                   value: pendientes,
                   color: COLORS.warning,
                   bg: COLORS.warningDim,
                 },
                 {
-                  label: "Cancelados",
-                  value: cancelados,
-                  color: COLORS.danger,
-                  bg: COLORS.dangerDim,
+                  label: "Completados",
+                  value: completados,
+                  color: COLORS.success,
+                  bg: COLORS.successDim,
                 },
               ].map((stat, i) => (
                 <View
@@ -799,7 +878,7 @@ export default function Dashboard() {
 
             {/* Filtros */}
             <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-              {(["todos", "pendiente", "cancelado"] as const).map((f) => (
+              {(["todos", "pendiente", "completado"] as const).map((f) => (
                 <TouchableOpacity
                   key={f}
                   onPress={() => setFiltro(f)}
@@ -826,7 +905,7 @@ export default function Dashboard() {
                       ? "TODOS"
                       : f === "pendiente"
                         ? "PENDIENTES"
-                        : "CANCELADOS"}
+                        : "COMPLETADOS"}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -886,6 +965,7 @@ export default function Dashboard() {
             item={item}
             onCancelar={cancelarReserva}
             onCompletar={completarReserva}
+            onBorrar={borrarReserva}
           />
         )}
       />
