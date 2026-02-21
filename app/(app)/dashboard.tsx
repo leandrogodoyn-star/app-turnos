@@ -21,10 +21,9 @@ type Reserva = {
   horario_id: string;
   cliente_nombre: string;
   cliente_telefono: string;
-  // Datos del horario (join)
+  servicio?: string;
   fecha?: string;
   hora?: string;
-  // Estado local (no existe en DB, lo manejamos en la app)
   estado: "pendiente" | "cancelado";
 };
 
@@ -111,9 +110,11 @@ function Avatar({ nombre }: { nombre?: string }) {
 function ReservaCard({
   item,
   onCancelar,
+  onCompletar,
 }: {
   item: Reserva;
   onCancelar: (id: string, horarioId: string) => void;
+  onCompletar: (id: string, horarioId: string) => void;
 }) {
   const esCancelado = item.estado === "cancelado";
   const [expandido, setExpandido] = useState(false);
@@ -137,6 +138,20 @@ function ReservaCard({
           text: "Sí, cancelar",
           style: "destructive",
           onPress: () => onCancelar(item.id, item.horario_id),
+        },
+      ],
+    );
+  };
+
+  const confirmarCompletar = () => {
+    Alert.alert(
+      "Turno completado",
+      `¿Marcás el turno de ${item.cliente_nombre || "este cliente"} como completado?`,
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Sí, completado",
+          onPress: () => onCompletar(item.id, item.horario_id),
         },
       ],
     );
@@ -200,6 +215,13 @@ function ReservaCard({
               📅 {item.fecha}
             </Text>
           </View>
+          {item.servicio && (
+            <Text
+              style={{ color: COLORS.accentLight, fontSize: 12, marginTop: 3 }}
+            >
+              ✂️ {item.servicio}
+            </Text>
+          )}
         </View>
         <View style={{ alignItems: "flex-end", gap: 6 }}>
           <Badge cancelado={esCancelado} />
@@ -220,6 +242,46 @@ function ReservaCard({
             gap: 10,
           }}
         >
+          {/* Servicio */}
+          {item.servicio && (
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              <View
+                style={{
+                  backgroundColor: COLORS.accentDim,
+                  borderRadius: 8,
+                  padding: 8,
+                  borderWidth: 1,
+                  borderColor: COLORS.accent + "33",
+                }}
+              >
+                <Text style={{ fontSize: 16 }}>✂️</Text>
+              </View>
+              <View>
+                <Text
+                  style={{
+                    color: COLORS.textMuted,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  SERVICIO
+                </Text>
+                <Text
+                  style={{
+                    color: COLORS.textPrimary,
+                    fontSize: 14,
+                    fontWeight: "600",
+                  }}
+                >
+                  {item.servicio}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Teléfono */}
           {item.cliente_telefono && (
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
@@ -260,39 +322,68 @@ function ReservaCard({
 
           {/* Acciones */}
           {!esCancelado && (
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-              {item.cliente_telefono && (
+            <View style={{ gap: 8, marginTop: 4 }}>
+              {/* Fila 1: WhatsApp + Completado */}
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {item.cliente_telefono && (
+                  <TouchableOpacity
+                    onPress={abrirWhatsApp}
+                    style={{
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      backgroundColor: COLORS.whatsappDim,
+                      borderRadius: 10,
+                      padding: 10,
+                      borderWidth: 1,
+                      borderColor: COLORS.whatsapp + "44",
+                    }}
+                  >
+                    <Text style={{ fontSize: 15 }}>💬</Text>
+                    <Text
+                      style={{
+                        color: COLORS.whatsapp,
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
+                      WhatsApp
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
-                  onPress={abrirWhatsApp}
+                  onPress={confirmarCompletar}
                   style={{
                     flex: 1,
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 6,
-                    backgroundColor: COLORS.whatsappDim,
+                    backgroundColor: COLORS.successDim,
                     borderRadius: 10,
                     padding: 10,
                     borderWidth: 1,
-                    borderColor: COLORS.whatsapp + "44",
+                    borderColor: COLORS.success + "44",
                   }}
                 >
-                  <Text style={{ fontSize: 15 }}>💬</Text>
+                  <Text style={{ fontSize: 15 }}>✅</Text>
                   <Text
                     style={{
-                      color: COLORS.whatsapp,
+                      color: COLORS.success,
                       fontSize: 13,
                       fontWeight: "600",
                     }}
                   >
-                    WhatsApp
+                    Completado
                   </Text>
                 </TouchableOpacity>
-              )}
+              </View>
+              {/* Fila 2: Cancelar */}
               <TouchableOpacity
                 onPress={confirmarCancelacion}
                 style={{
-                  flex: 1,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
@@ -312,7 +403,7 @@ function ReservaCard({
                     fontWeight: "600",
                   }}
                 >
-                  Cancelar
+                  Cancelar turno
                 </Text>
               </TouchableOpacity>
             </View>
@@ -336,25 +427,23 @@ export default function Dashboard() {
   const cargarReservas = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
-    console.log("Dashboard userId:", userId);
     if (!userId) return;
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("reservas")
       .select(
         `
-      id,
-      admin_id,
-      horario_id,
-      cliente_nombre,
-      cliente_telefono,
-      horarios (fecha, hora, disponible)
-    `,
+        id,
+        admin_id,
+        horario_id,
+        cliente_nombre,
+        cliente_telefono,
+        servicio,
+        horarios (fecha, hora, disponible)
+      `,
       )
       .eq("admin_id", userId)
       .order("horario_id", { ascending: true });
-
-    console.log("Reservas:", data?.length, "Error:", error);
 
     if (data) {
       const reservasFormateadas: Reserva[] = data.map((r: any) => ({
@@ -363,6 +452,7 @@ export default function Dashboard() {
         horario_id: r.horario_id,
         cliente_nombre: r.cliente_nombre,
         cliente_telefono: r.cliente_telefono,
+        servicio: r.servicio,
         fecha: r.horarios?.fecha,
         hora: r.horarios?.hora?.slice(0, 5),
         estado: r.horarios?.disponible === false ? "cancelado" : "pendiente",
@@ -402,18 +492,27 @@ export default function Dashboard() {
 
     const intervalo = setInterval(() => {
       cargarReservas();
-    }, 30000); // cada 30 segundos
+    }, 30000);
 
     return () => clearInterval(intervalo);
   }, []);
 
-  // Cancelar: poner el horario como no disponible y eliminar la reserva
+  // Cancelar: libera el horario para que otro pueda reservar
   const cancelarReserva = async (id: string, horarioId: string) => {
+    await supabase.from("reservas").delete().eq("id", id);
+    await supabase
+      .from("horarios")
+      .update({ disponible: true })
+      .eq("id", horarioId);
+    setReservas((prev) => prev.filter((r) => r.id !== id));
+  };
+  // Completado: borra el turno y deshabilita el horario
+  const completarReserva = async (id: string, horarioId: string) => {
+    await supabase.from("reservas").delete().eq("id", id);
     await supabase
       .from("horarios")
       .update({ disponible: false })
       .eq("id", horarioId);
-    await supabase.from("reservas").delete().eq("id", id);
     cargarReservas();
   };
 
@@ -434,7 +533,6 @@ export default function Dashboard() {
 
   const reservasFiltradas =
     filtro === "todos" ? reservas : reservas.filter((r) => r.estado === filtro);
-
   const pendientes = reservas.filter((r) => r.estado === "pendiente").length;
   const cancelados = reservas.filter((r) => r.estado === "cancelado").length;
 
@@ -784,7 +882,11 @@ export default function Dashboard() {
           </View>
         }
         renderItem={({ item }) => (
-          <ReservaCard item={item} onCancelar={cancelarReserva} />
+          <ReservaCard
+            item={item}
+            onCancelar={cancelarReserva}
+            onCompletar={completarReserva}
+          />
         )}
       />
 
