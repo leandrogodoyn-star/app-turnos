@@ -187,6 +187,7 @@ exports.processMessage = async (from, text) => {
           horario_id: horario.id,
           cliente_nombre: s.nombre,
           cliente_telefono: telefono,
+          servicio: s.servicio,
         });
 
         if (error) {

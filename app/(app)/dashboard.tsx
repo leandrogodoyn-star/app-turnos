@@ -1,18 +1,18 @@
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  Alert,
   FlatList,
   Image,
-  Modal,
-  TextInput,
-  StatusBar,
   Linking,
-  Alert,
+  Modal,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { router } from "expo-router";
 import { cambiarFoto } from "../../lib/utilidades";
 
 type Reserva = {
@@ -336,23 +336,25 @@ export default function Dashboard() {
   const cargarReservas = async () => {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id;
+    console.log("Dashboard userId:", userId);
     if (!userId) return;
 
-    // Traer reservas con datos del horario via join
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("reservas")
       .select(
         `
-        id,
-        admin_id,
-        horario_id,
-        cliente_nombre,
-        cliente_telefono,
-        horarios (fecha, hora, disponible)
-      `,
+      id,
+      admin_id,
+      horario_id,
+      cliente_nombre,
+      cliente_telefono,
+      horarios (fecha, hora, disponible)
+    `,
       )
       .eq("admin_id", userId)
       .order("horario_id", { ascending: true });
+
+    console.log("Reservas:", data?.length, "Error:", error);
 
     if (data) {
       const reservasFormateadas: Reserva[] = data.map((r: any) => ({
@@ -363,11 +365,9 @@ export default function Dashboard() {
         cliente_telefono: r.cliente_telefono,
         fecha: r.horarios?.fecha,
         hora: r.horarios?.hora?.slice(0, 5),
-        // Si el horario está deshabilitado, la reserva está cancelada
         estado: r.horarios?.disponible === false ? "cancelado" : "pendiente",
       }));
 
-      // Ordenar por fecha y hora
       reservasFormateadas.sort((a, b) => {
         if (a.fecha !== b.fecha)
           return (a.fecha || "") > (b.fecha || "") ? 1 : -1;
@@ -399,6 +399,12 @@ export default function Dashboard() {
   useEffect(() => {
     cargarPerfil();
     cargarReservas();
+
+    const intervalo = setInterval(() => {
+      cargarReservas();
+    }, 30000); // cada 30 segundos
+
+    return () => clearInterval(intervalo);
   }, []);
 
   // Cancelar: poner el horario como no disponible y eliminar la reserva
