@@ -5,6 +5,7 @@ const webhookRoutes = require("./routes/webhook.routes");
 
 const app = express(); // ← FALTABA ESTO
 
+app.set("trust proxy", 1);
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

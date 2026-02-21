@@ -1,5 +1,7 @@
+const botService = require("../services/bot.service");
+const logger = require("../config/logger"); // ← faltaba esto
+
 exports.handleIncoming = async (req, res) => {
-  // Responder con TwiML vacío en lugar de sendStatus(200)
   res.set("Content-Type", "text/xml");
   res.send("<Response></Response>");
 
