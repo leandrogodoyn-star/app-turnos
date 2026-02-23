@@ -1,6 +1,6 @@
 import * as ImagePicker from "expo-image-picker";
-import { supabase } from "./supabase";
 import { Alert } from "react-native";
+import { supabase } from "./supabase";
 
 export const cambiarFoto = async (
   userId: string,
@@ -28,7 +28,7 @@ export const cambiarFoto = async (
     const response = await fetch(uri);
     const arrayBuffer = await response.arrayBuffer();
 
-    const fileName = `${userId}.jpg`;
+    const fileName = `${userId}_${Date.now()}.jpg`;
 
     const { error: uploadError } = await supabase.storage
       .from("avatars")
@@ -48,9 +48,11 @@ export const cambiarFoto = async (
       .update({ avatar: publicUrl })
       .eq("id", userId);
 
+  
+    const urlLimpia = publicUrl.split("?")[0];
     setPerfil((prev: any) => ({
       ...prev,
-      avatar: publicUrl + "?t=" + Date.now(),
+      avatar: `${urlLimpia}?t=${Date.now()}`,
     }));
 
     Alert.alert("Listo", "Foto actualizada");

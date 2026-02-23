@@ -1,15 +1,18 @@
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  Modal,
-  ActivityIndicator,
-} from "react-native";
-import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabase";
 import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { supabase } from "../../lib/supabase";
 
 const COLORS = {
   bg: "#0F1117",
@@ -199,6 +202,16 @@ type SlotInfo = {
 };
 
 export default function GestionarHorarios() {
+  const [eventoDelDia, setEventoDelDia] = useState<any>(null);
+  const [modalEvento, setModalEvento] = useState(false);
+  const [formEvento, setFormEvento] = useState({
+    tipo: "feriado",
+    hora_inicio: "09:00",
+    hora_fin: "18:00",
+    servicio_especial: "",
+    descripcion: "",
+  });
+
   const [fechaSeleccionada, setFechaSeleccionada] = useState("");
   const [slots, setSlots] = useState<SlotInfo[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -214,18 +227,47 @@ export default function GestionarHorarios() {
   const dias = generarDias();
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user?.id) setUserId(data.user.id);
+    supabase.auth.getUser().then(async ({ data }) => {
+      const id = data?.user?.id;
+      if (!id) return;
+      setUserId(id);
+
+      const { data: perfil } = await supabase
+        .from("profiles")
+        .select("hora_apertura, hora_cierre")
+        .eq("id", id)
+        .single();
+
+      if (perfil?.hora_apertura) {
+        const apertura = perfil.hora_apertura.slice(0, 5);
+        setHoraInicio(apertura);
+        setHoraInicioTemp(apertura);
+      }
+      if (perfil?.hora_cierre) {
+        const cierre = perfil.hora_cierre.slice(0, 5);
+        setHoraFin(cierre);
+        setHoraFinTemp(cierre);
+      }
     });
   }, []);
 
   useEffect(() => {
     if (!fechaSeleccionada || !userId) return;
     cargarSlots();
+    cargarEvento();
   }, [fechaSeleccionada, userId]);
 
+  const cargarEvento = async () => {
+    const { data } = await supabase
+      .from("eventos_especiales")
+      .select("*")
+      .eq("admin_id", userId)
+      .eq("fecha", fechaSeleccionada)
+      .single();
+    setEventoDelDia(data || null);
+  };
+
   const cargarSlots = async () => {
-    console.log("userId:", userId, "fecha:", fechaSeleccionada);
     if (!userId || !fechaSeleccionada) return;
     setCargando(true);
 
@@ -236,7 +278,6 @@ export default function GestionarHorarios() {
       .eq("fecha", fechaSeleccionada)
       .order("hora", { ascending: true });
 
-    console.log("Data:", resultado.data?.length, "Error:", resultado.error);
     const horarios = resultado.data;
 
     if (!horarios || horarios.length === 0) {
@@ -455,6 +496,107 @@ export default function GestionarHorarios() {
           })}
         </ScrollView>
 
+        {/* Banner evento del día */}
+        {fechaSeleccionada && (
+          <TouchableOpacity
+            onPress={() => {
+              if (eventoDelDia) {
+                Alert.alert(
+                  "Evento del día",
+                  `${eventoDelDia.tipo === "feriado" ? "🔴 Feriado" : eventoDelDia.tipo === "horario_especial" ? "🟡 Horario especial" : "🟣 Servicio especial"}\n\n${eventoDelDia.descripcion || ""}`,
+                  [
+                    { text: "Cancelar", style: "cancel" },
+                    {
+                      text: "Eliminar evento",
+                      style: "destructive",
+                      onPress: async () => {
+                        await supabase
+                          .from("eventos_especiales")
+                          .delete()
+                          .eq("id", eventoDelDia.id);
+                        setEventoDelDia(null);
+                      },
+                    },
+                  ],
+                );
+              } else {
+                setFormEvento({
+                  tipo: "feriado",
+                  hora_inicio: horaInicio,
+                  hora_fin: horaFin,
+                  servicio_especial: "",
+                  descripcion: "",
+                });
+                setModalEvento(true);
+              }
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: eventoDelDia
+                ? eventoDelDia.tipo === "feriado"
+                  ? "#FF5C6A22"
+                  : eventoDelDia.tipo === "horario_especial"
+                    ? "#FFAA4022"
+                    : "#6C63FF22"
+                : COLORS.surface,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 20,
+              borderWidth: 1,
+              borderColor: eventoDelDia
+                ? eventoDelDia.tipo === "feriado"
+                  ? COLORS.danger + "55"
+                  : eventoDelDia.tipo === "horario_especial"
+                    ? COLORS.warning + "55"
+                    : COLORS.accent + "55"
+                : COLORS.border,
+            }}
+          >
+            <Text style={{ fontSize: 18 }}>
+              {eventoDelDia
+                ? eventoDelDia.tipo === "feriado"
+                  ? "🔴"
+                  : eventoDelDia.tipo === "horario_especial"
+                    ? "🟡"
+                    : "🟣"
+                : "📌"}
+            </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: COLORS.textPrimary,
+                  fontSize: 13,
+                  fontWeight: "700",
+                }}
+              >
+                {eventoDelDia
+                  ? eventoDelDia.tipo === "feriado"
+                    ? "Feriado / Sin atención"
+                    : eventoDelDia.tipo === "horario_especial"
+                      ? "Horario especial"
+                      : `Servicio especial: ${eventoDelDia.servicio_especial}`
+                  : "Marcar día como especial"}
+              </Text>
+              {eventoDelDia?.descripcion && (
+                <Text
+                  style={{
+                    color: COLORS.textSecondary,
+                    fontSize: 11,
+                    marginTop: 2,
+                  }}
+                >
+                  {eventoDelDia.descripcion}
+                </Text>
+              )}
+            </View>
+            <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>
+              {eventoDelDia ? "Tocá para eliminar" : "→"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {!fechaSeleccionada ? (
           <View
             style={{
@@ -513,7 +655,6 @@ export default function GestionarHorarios() {
           </View>
         ) : (
           <>
-            {/* Stats del día */}
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
               {[
                 {
@@ -567,7 +708,6 @@ export default function GestionarHorarios() {
               ))}
             </View>
 
-            {/* Leyenda */}
             <View
               style={{
                 backgroundColor: COLORS.surface,
@@ -618,13 +758,11 @@ export default function GestionarHorarios() {
               </View>
             </View>
 
-            {/* Grid de slots */}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {slots.map((slot) => {
                 const estado = getEstado(slot);
                 const estaGuardando = guardando === slot.id;
                 const esOcupado = estado === "ocupado";
-
                 const estilos = {
                   disponible: {
                     bg: COLORS.successDim,
@@ -740,7 +878,7 @@ export default function GestionarHorarios() {
               />
             </View>
             <TouchableOpacity
-              onPress={() => {
+              onPress={async () => {
                 if (horaInicioTemp >= horaFinTemp) {
                   Alert.alert(
                     "Error",
@@ -751,6 +889,15 @@ export default function GestionarHorarios() {
                 setHoraInicio(horaInicioTemp);
                 setHoraFin(horaFinTemp);
                 setModalRango(false);
+                if (userId) {
+                  await supabase
+                    .from("profiles")
+                    .update({
+                      hora_apertura: horaInicioTemp,
+                      hora_cierre: horaFinTemp,
+                    })
+                    .eq("id", userId);
+                }
                 if (fechaSeleccionada) cargarSlots();
               }}
               style={{
@@ -788,6 +935,257 @@ export default function GestionarHorarios() {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      {/* Modal evento especial */}
+      <Modal visible={modalEvento} transparent animationType="slide">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{
+            flex: 1,
+            justifyContent: "flex-end",
+            backgroundColor: "#00000088",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: COLORS.surface,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 28,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.textPrimary,
+                fontSize: 18,
+                fontWeight: "800",
+                marginBottom: 20,
+              }}
+            >
+              Evento especial — {fechaSeleccionada}
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.textMuted,
+                fontSize: 11,
+                letterSpacing: 1,
+                marginBottom: 10,
+              }}
+            >
+              TIPO DE EVENTO
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
+              {[
+                { value: "feriado", label: "🔴 Feriado" },
+                { value: "horario_especial", label: "🟡 Horario especial" },
+                { value: "servicio_especial", label: "🟣 Servicio especial" },
+              ].map((t) => (
+                <TouchableOpacity
+                  key={t.value}
+                  onPress={() =>
+                    setFormEvento((p) => ({ ...p, tipo: t.value }))
+                  }
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    backgroundColor:
+                      formEvento.tipo === t.value
+                        ? COLORS.accentDim
+                        : COLORS.bg,
+                    borderWidth: 1,
+                    borderColor:
+                      formEvento.tipo === t.value
+                        ? COLORS.accent + "88"
+                        : COLORS.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        formEvento.tipo === t.value
+                          ? COLORS.accentLight
+                          : COLORS.textMuted,
+                      fontSize: 11,
+                      fontWeight: "600",
+                      textAlign: "center",
+                    }}
+                  >
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {formEvento.tipo === "horario_especial" && (
+              <>
+                <Text
+                  style={{
+                    color: COLORS.textMuted,
+                    fontSize: 11,
+                    letterSpacing: 1,
+                    marginBottom: 10,
+                  }}
+                >
+                  HORARIO
+                </Text>
+                <View
+                  style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}
+                >
+                  <HoraPicker
+                    valor={formEvento.hora_inicio}
+                    onChange={(v) =>
+                      setFormEvento((p) => ({ ...p, hora_inicio: v }))
+                    }
+                    label="APERTURA"
+                  />
+                  <HoraPicker
+                    valor={formEvento.hora_fin}
+                    onChange={(v) =>
+                      setFormEvento((p) => ({ ...p, hora_fin: v }))
+                    }
+                    label="CIERRE"
+                  />
+                </View>
+              </>
+            )}
+
+            {formEvento.tipo === "servicio_especial" && (
+              <>
+                <Text
+                  style={{
+                    color: COLORS.textMuted,
+                    fontSize: 11,
+                    letterSpacing: 1,
+                    marginBottom: 8,
+                  }}
+                >
+                  NOMBRE DEL SERVICIO
+                </Text>
+                <TextInput
+                  value={formEvento.servicio_especial}
+                  onChangeText={(v) =>
+                    setFormEvento((p) => ({ ...p, servicio_especial: v }))
+                  }
+                  placeholder="Ej: Corte + barba promocional"
+                  placeholderTextColor={COLORS.textMuted}
+                  style={{
+                    backgroundColor: COLORS.bg,
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                    borderRadius: 12,
+                    padding: 14,
+                    color: COLORS.textPrimary,
+                    fontSize: 15,
+                    marginBottom: 20,
+                  }}
+                />
+              </>
+            )}
+
+            <Text
+              style={{
+                color: COLORS.textMuted,
+                fontSize: 11,
+                letterSpacing: 1,
+                marginBottom: 8,
+              }}
+            >
+              DESCRIPCIÓN (opcional)
+            </Text>
+            <TextInput
+              value={formEvento.descripcion}
+              onChangeText={(v) =>
+                setFormEvento((p) => ({ ...p, descripcion: v }))
+              }
+              placeholder="Ej: Cerrado por feriado nacional"
+              placeholderTextColor={COLORS.textMuted}
+              style={{
+                backgroundColor: COLORS.bg,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                borderRadius: 12,
+                padding: 14,
+                color: COLORS.textPrimary,
+                fontSize: 15,
+                marginBottom: 24,
+              }}
+            />
+
+            <TouchableOpacity
+              onPress={async () => {
+                if (
+                  formEvento.tipo === "servicio_especial" &&
+                  !formEvento.servicio_especial.trim()
+                ) {
+                  Alert.alert(
+                    "Atención",
+                    "Ingresá el nombre del servicio especial.",
+                  );
+                  return;
+                }
+                const { data, error } = await supabase
+                  .from("eventos_especiales")
+                  .insert({
+                    admin_id: userId,
+                    fecha: fechaSeleccionada,
+                    tipo: formEvento.tipo,
+                    hora_inicio:
+                      formEvento.tipo === "horario_especial"
+                        ? formEvento.hora_inicio
+                        : null,
+                    hora_fin:
+                      formEvento.tipo === "horario_especial"
+                        ? formEvento.hora_fin
+                        : null,
+                    servicio_especial:
+                      formEvento.tipo === "servicio_especial"
+                        ? formEvento.servicio_especial
+                        : null,
+                    descripcion: formEvento.descripcion || null,
+                  })
+                  .select()
+                  .single();
+
+                if (!error && data) {
+                  setEventoDelDia(data);
+                  setModalEvento(false);
+                } else {
+                  Alert.alert(
+                    "Error",
+                    error?.message || "No se pudo guardar el evento.",
+                  );
+                }
+              }}
+              style={{
+                backgroundColor: COLORS.accent,
+                padding: 16,
+                borderRadius: 14,
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+                Guardar evento
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setModalEvento(false)}
+              style={{ padding: 12 }}
+            >
+              <Text
+                style={{ color: COLORS.textSecondary, textAlign: "center" }}
+              >
+                Cancelar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

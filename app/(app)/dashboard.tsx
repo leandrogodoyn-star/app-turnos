@@ -137,15 +137,20 @@ function ReservaCard({
   const [expandido, setExpandido] = useState(false);
 
   const translateX = useRef(new Animated.Value(0)).current;
+  const esCompletadoRef = useRef(esCompletado);
+  useEffect(() => {
+    esCompletadoRef.current = esCompletado;
+  }, [esCompletado]);
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
-        esCompletado && Math.abs(g.dx) > 10,
+        esCompletadoRef.current && Math.abs(g.dx) > 10,
       onPanResponderMove: (_, g) => {
-        if (esCompletado && g.dx > 0) translateX.setValue(g.dx);
+        if (esCompletadoRef.current && g.dx > 0) translateX.setValue(g.dx);
       },
       onPanResponderRelease: (_, g) => {
-        if (esCompletado && g.dx > 80) {
+        if (esCompletadoRef.current && g.dx > 80) {
           Alert.alert("Borrar turno", "¿Borrar este turno completado?", [
             {
               text: "No",
@@ -553,9 +558,10 @@ export default function Dashboard() {
       .select("*")
       .eq("id", userId)
       .single();
-
+    console.log("PERFIL DESDE SUPABASE:", JSON.stringify(perfilData));
     if (perfilData?.avatar) {
-      perfilData.avatar = `${perfilData.avatar}?t=${Date.now()}`;
+      const urlLimpia = perfilData.avatar.split("?")[0];
+      perfilData.avatar = `${urlLimpia}?t=${Date.now()}`;
     }
 
     setPerfil(perfilData);
@@ -736,6 +742,14 @@ export default function Dashboard() {
                 icon: "⚙️",
                 onPress: () => {
                   router.push("/configuracion");
+                  setMenuVisible(false);
+                },
+              },
+              {
+                label: "Servicios",
+                icon: "✂️",
+                onPress: () => {
+                  router.push("/servicios");
                   setMenuVisible(false);
                 },
               },

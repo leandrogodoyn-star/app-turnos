@@ -1,116 +1,514 @@
-// app/(app)/configuracion.tsx
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
+  View,
 } from "react-native";
-import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { router } from "expo-router";
 
-type Perfil = {
-  nombre: string;
-  correo: string;
-  horario?: string;
+const COLORS = {
+  bg: "#0F1117",
+  surface: "#1A1D27",
+  border: "#2A2E45",
+  accent: "#6C63FF",
+  accentLight: "#8B85FF",
+  accentDim: "#6C63FF22",
+  success: "#22D3A5",
+  successDim: "#22D3A522",
+  textPrimary: "#EEEEF5",
+  textSecondary: "#8B8FA8",
+  textMuted: "#4A4E6A",
 };
 
-export default function Configuracion() {
-  const [perfil, setPerfil] = useState<Perfil | null>(null);
-  const [nuevoNombre, setNuevoNombre] = useState("");
-  const [nuevoCorreo, setNuevoCorreo] = useState("");
-  const [nuevoHorario, setNuevoHorario] = useState("");
+const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const DURACIONES = [15, 20, 30, 45, 60, 90];
+const ANTICIPACIONES = [
+  { label: "Sin límite", value: 0 },
+  { label: "30 minutos", value: 30 },
+  { label: "1 hora", value: 60 },
+  { label: "2 horas", value: 120 },
+  { label: "1 día", value: 1440 },
+];
 
-  useEffect(() => {
-    cargarPerfil();
-  }, []);
-
-  const cargarPerfil = async () => {
-    const { data } = await supabase.from("perfiles").select("*").single();
-    if (data) {
-      setPerfil({
-        nombre: data.nombre,
-        correo: data.correo,
-        horario: data.horario,
-      });
-      setNuevoNombre(data.nombre);
-      setNuevoCorreo(data.correo);
-      setNuevoHorario(data.horario || "");
-    }
-  };
-
-  const guardarCambios = async () => {
-    if (!perfil) return;
-    const { error } = await supabase
-      .from("perfiles")
-      .update({
-        nombre: nuevoNombre,
-        correo: nuevoCorreo,
-        horario: nuevoHorario,
-      })
-      .eq("nombre", perfil.nombre);
-
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
-
-    Alert.alert("Guardado", "Los cambios se guardaron correctamente.");
-    router.back();
-  };
-
+function Seccion({ titulo, children }: { titulo: string; children: any }) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Configuración del negocio</Text>
-
-      <Text style={styles.label}>Nombre del negocio</Text>
-      <TextInput
-        value={nuevoNombre}
-        onChangeText={setNuevoNombre}
-        style={styles.input}
-      />
-
-      <Text style={styles.label}>Correo de contacto</Text>
-      <TextInput
-        value={nuevoCorreo}
-        onChangeText={setNuevoCorreo}
-        style={styles.input}
-        keyboardType="email-address"
-      />
-
-      <Text style={styles.label}>Horario de atención</Text>
-      <TextInput
-        value={nuevoHorario}
-        onChangeText={setNuevoHorario}
-        style={styles.input}
-        placeholder="Ej: Lun a Vie 9:00-18:00"
-      />
-
-      <TouchableOpacity onPress={guardarCambios} style={styles.saveButton}>
-        <Text style={styles.saveButtonText}>Guardar cambios</Text>
-      </TouchableOpacity>
+    <View style={{ marginBottom: 24 }}>
+      <Text
+        style={{
+          color: COLORS.textMuted,
+          fontSize: 11,
+          letterSpacing: 1.4,
+          fontWeight: "700",
+          marginBottom: 12,
+        }}
+      >
+        {titulo}
+      </Text>
+      <View
+        style={{
+          backgroundColor: COLORS.surface,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          overflow: "hidden",
+        }}
+      >
+        {children}
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#f4f6f8" },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
-  label: { marginTop: 10, marginBottom: 5, fontWeight: "600" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: "#fff",
-  },
-  saveButton: {
-    marginTop: 30,
-    backgroundColor: "#2563eb",
-    padding: 14,
-    borderRadius: 8,
-  },
-  saveButtonText: { color: "white", fontWeight: "600", textAlign: "center" },
-});
+function Fila({
+  label,
+  children,
+  ultimo,
+}: {
+  label: string;
+  children: any;
+  ultimo?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        padding: 16,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottomWidth: ultimo ? 0 : 1,
+        borderBottomColor: COLORS.border,
+      }}
+    >
+      <Text style={{ color: COLORS.textSecondary, fontSize: 14 }}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
+export default function Configuracion() {
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [codigoBot, setCodigoBot] = useState("");
+
+  const [nombre, setNombre] = useState("");
+  const [duracion, setDuracion] = useState(30);
+  const [horaApertura, setHoraApertura] = useState("09:00");
+  const [horaCierre, setHoraCierre] = useState("18:00");
+  const [diasTrabajo, setDiasTrabajo] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [anticipacion, setAnticipacion] = useState(60);
+  const [limiteTurnos, setLimiteTurnos] = useState(10);
+
+  useEffect(() => {
+    cargarConfig();
+  }, []);
+
+  const cargarConfig = async () => {
+    const { data } = await supabase.auth.getUser();
+    const id = data?.user?.id;
+    if (!id) return;
+    setUserId(id);
+
+    const { data: perfil } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (perfil) {
+      setNombre(perfil.nombre || "");
+      setCodigoBot(perfil.codigo_bot || "");
+      setDuracion(perfil.duracion_turno || 30);
+      setHoraApertura(perfil.hora_apertura?.slice(0, 5) || "09:00");
+      setHoraCierre(perfil.hora_cierre?.slice(0, 5) || "18:00");
+      setDiasTrabajo(perfil.dias_trabajo?.map(Number) || [1, 2, 3, 4, 5]);
+      setAnticipacion(perfil.anticipacion_minima ?? 60);
+      setLimiteTurnos(perfil.limite_turnos_dia || 10);
+    }
+
+    setCargando(false);
+  };
+
+  const toggleDia = (dia: number) => {
+    setDiasTrabajo((prev) =>
+      prev.includes(dia) ? prev.filter((d) => d !== dia) : [...prev, dia],
+    );
+  };
+
+  const guardar = async () => {
+    if (!userId) return;
+    if (!nombre.trim()) {
+      Alert.alert("Atención", "El nombre no puede estar vacío.");
+      return;
+    }
+
+    setGuardando(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        nombre: nombre.trim(),
+        duracion_turno: duracion,
+        hora_apertura: horaApertura,
+        hora_cierre: horaCierre,
+        dias_trabajo: diasTrabajo,
+        anticipacion_minima: anticipacion,
+        limite_turnos_dia: limiteTurnos,
+      })
+      .eq("id", userId);
+
+    setGuardando(false);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+    } else {
+      Alert.alert(
+        "✅ Guardado",
+        "La configuración se actualizó correctamente.",
+        [{ text: "OK", onPress: () => router.back() }],
+      );
+    }
+  };
+
+  if (cargando) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: COLORS.bg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator color={COLORS.accent} size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+
+      {/* Header */}
+      <View
+        style={{
+          paddingTop: 56,
+          paddingHorizontal: 20,
+          paddingBottom: 20,
+          borderBottomWidth: 1,
+          borderBottomColor: COLORS.border,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={{ color: COLORS.accent, fontSize: 16 }}>← Volver</Text>
+        </TouchableOpacity>
+        <Text
+          style={{
+            color: COLORS.textPrimary,
+            fontSize: 20,
+            fontWeight: "800",
+            flex: 1,
+          }}
+        >
+          Configuración
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+        {/* Negocio */}
+        <Seccion titulo="NEGOCIO">
+          <Fila label="Nombre" ultimo>
+            <TextInput
+              value={nombre}
+              onChangeText={setNombre}
+              style={{
+                color: COLORS.textPrimary,
+                fontSize: 14,
+                textAlign: "right",
+                minWidth: 140,
+              }}
+              placeholderTextColor={COLORS.textMuted}
+              placeholder="Nombre del negocio"
+            />
+          </Fila>
+        </Seccion>
+
+        {/* Turnos */}
+        <Seccion titulo="TURNOS">
+          <View
+            style={{
+              borderBottomWidth: 1,
+              borderBottomColor: COLORS.border,
+              padding: 16,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.textSecondary,
+                fontSize: 14,
+                marginBottom: 12,
+              }}
+            >
+              Duración del turno
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {DURACIONES.map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    onPress={() => setDuracion(d)}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      backgroundColor:
+                        duracion === d ? COLORS.accent : COLORS.bg,
+                      borderWidth: 1,
+                      borderColor:
+                        duracion === d ? COLORS.accent : COLORS.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: duracion === d ? "white" : COLORS.textMuted,
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {d} min
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+          <Fila label="Anticipación mínima">
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 6,
+                justifyContent: "flex-end",
+                maxWidth: 220,
+              }}
+            >
+              {ANTICIPACIONES.map((a) => (
+                <TouchableOpacity
+                  key={a.value}
+                  onPress={() => setAnticipacion(a.value)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor:
+                      anticipacion === a.value ? COLORS.accent : COLORS.bg,
+                    borderWidth: 1,
+                    borderColor:
+                      anticipacion === a.value ? COLORS.accent : COLORS.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        anticipacion === a.value ? "white" : COLORS.textMuted,
+                      fontSize: 11,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {a.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Fila>
+          <Fila label="Límite por día" ultimo>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+            >
+              <TouchableOpacity
+                onPress={() => setLimiteTurnos(Math.max(1, limiteTurnos - 1))}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  backgroundColor: COLORS.bg,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.textPrimary,
+                    fontSize: 18,
+                    lineHeight: 20,
+                  }}
+                >
+                  −
+                </Text>
+              </TouchableOpacity>
+              <Text
+                style={{
+                  color: COLORS.textPrimary,
+                  fontSize: 16,
+                  fontWeight: "700",
+                  minWidth: 28,
+                  textAlign: "center",
+                }}
+              >
+                {limiteTurnos}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setLimiteTurnos(Math.min(50, limiteTurnos + 1))}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  backgroundColor: COLORS.bg,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.textPrimary,
+                    fontSize: 18,
+                    lineHeight: 20,
+                  }}
+                >
+                  +
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Fila>
+        </Seccion>
+
+        {/* Horario */}
+        <Seccion titulo="HORARIO DE ATENCIÓN">
+          <Fila label="Apertura">
+            <TextInput
+              value={horaApertura}
+              onChangeText={setHoraApertura}
+              placeholder="09:00"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numbers-and-punctuation"
+              style={{
+                color: COLORS.textPrimary,
+                fontSize: 14,
+                textAlign: "right",
+              }}
+            />
+          </Fila>
+          <Fila label="Cierre" ultimo>
+            <TextInput
+              value={horaCierre}
+              onChangeText={setHoraCierre}
+              placeholder="18:00"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numbers-and-punctuation"
+              style={{
+                color: COLORS.textPrimary,
+                fontSize: 14,
+                textAlign: "right",
+              }}
+            />
+          </Fila>
+        </Seccion>
+
+        {/* Días */}
+        <Seccion titulo="DÍAS DE TRABAJO">
+          <View
+            style={{
+              padding: 16,
+              flexDirection: "row",
+              justifyContent: "space-between",
+            }}
+          >
+            {DIAS.map((dia, i) => {
+              const activo = diasTrabajo.includes(i);
+              return (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => toggleDia(i)}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: activo ? COLORS.accent : COLORS.bg,
+                    borderWidth: 1,
+                    borderColor: activo ? COLORS.accent : COLORS.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: activo ? "white" : COLORS.textMuted,
+                      fontSize: 11,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {dia}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Seccion>
+
+        {/* Bot */}
+        <Seccion titulo="BOT DE WHATSAPP">
+          <Fila label="Código del bot" ultimo>
+            <Text
+              style={{
+                color: COLORS.accentLight,
+                fontSize: 14,
+                fontWeight: "700",
+              }}
+            >
+              {codigoBot || "—"}
+            </Text>
+          </Fila>
+        </Seccion>
+
+        {/* Botón guardar */}
+        <TouchableOpacity
+          onPress={guardar}
+          disabled={guardando}
+          style={{
+            backgroundColor: COLORS.accent,
+            padding: 18,
+            borderRadius: 14,
+            alignItems: "center",
+            marginTop: 8,
+            opacity: guardando ? 0.7 : 1,
+            shadowColor: COLORS.accent,
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.4,
+            shadowRadius: 12,
+            elevation: 8,
+          }}
+        >
+          {guardando ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
+              Guardar cambios
+            </Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
