@@ -167,6 +167,13 @@ export default function Configuracion() {
     if (error) {
       Alert.alert("Error", error.message);
     } else {
+      // Regenerar horarios con nueva configuración
+      await fetch("https://app-turnos-4qaf.onrender.com/regenerar-horarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+
       Alert.alert(
         "✅ Guardado",
         "La configuración se actualizó correctamente.",

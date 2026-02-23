@@ -102,4 +102,44 @@ function iniciarCron() {
   generarTodosLosHorarios();
 }
 
-module.exports = { iniciarCron, generarTodosLosHorarios };
+// PONÉ esto — agregá la función ANTES del module.exports:
+async function regenerarHorariosPorNegocio(negocioId) {
+  const hoy = new Date().toISOString().split("T")[0];
+
+  const { data: horariosFuturos } = await db
+    .from("horarios")
+    .select("id")
+    .eq("admin_id", negocioId)
+    .gte("fecha", hoy)
+    .eq("disponible", true);
+
+  if (horariosFuturos && horariosFuturos.length > 0) {
+    const ids = horariosFuturos.map((h) => h.id);
+
+    const { data: reservados } = await db
+      .from("reservas")
+      .select("horario_id")
+      .in("horario_id", ids);
+
+    const reservadosSet = new Set(reservados?.map((r) => r.horario_id) ?? []);
+    const sinReserva = ids.filter((id) => !reservadosSet.has(id));
+
+    if (sinReserva.length > 0) {
+      await db.from("horarios").delete().in("id", sinReserva);
+    }
+  }
+
+  const { data: negocio } = await db
+    .from("profiles")
+    .select("id, duracion_turno, hora_apertura, hora_cierre, dias_trabajo")
+    .eq("id", negocioId)
+    .single();
+
+  if (negocio) await generarHorariosParaNegocio(negocio);
+}
+
+module.exports = {
+  iniciarCron,
+  generarTodosLosHorarios,
+  regenerarHorariosPorNegocio,
+};
