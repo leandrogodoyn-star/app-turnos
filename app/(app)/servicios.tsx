@@ -65,11 +65,13 @@ export default function Servicios() {
     if (!id) return;
     setUserId(id);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("servicios")
       .select("*")
       .eq("admin_id", id)
-      .order("created_at", { ascending: true });
+      .order("nombre", { ascending: true });
+
+    console.log("servicios cargados:", data, "error:", error);
 
     setServicios(data || []);
     setCargando(false);
@@ -123,6 +125,7 @@ export default function Servicios() {
         .insert(payload)
         .select()
         .single();
+      console.log("insert error:", error, "data:", data);
       if (!error && data) setServicios((prev) => [...prev, data]);
     }
 
