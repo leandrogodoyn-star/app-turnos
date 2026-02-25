@@ -474,9 +474,9 @@ export default function Configuracion() {
           </View>
         </Seccion>
 
-        {/* Bot */}
-        <Seccion titulo="BOT DE WHATSAPP">
-          <Fila label="Código del bot" ultimo>
+        {/* Link de reservas */}
+        <Seccion titulo="LINK DE RESERVAS">
+          <Fila label="Código" ultimo={false}>
             <Text
               style={{
                 color: COLORS.accentLight,
@@ -486,6 +486,38 @@ export default function Configuracion() {
             >
               {codigoBot || "—"}
             </Text>
+          </Fila>
+          <Fila label="Compartir link" ultimo>
+            <TouchableOpacity
+              onPress={() => {
+                const link = `https://harmonious-fudge-da1512.netlify.app/reservar/${codigoBot}`;
+                Alert.alert("Tu link de reservas", link, [
+                  { text: "Cerrar", style: "cancel" },
+                  {
+                    text: "Copiar",
+                    onPress: () => {
+                      import("expo-clipboard").then((Clipboard) => {
+                        Clipboard.setStringAsync(link);
+                        Alert.alert(
+                          "✅ Copiado",
+                          "Link copiado al portapapeles.",
+                        );
+                      });
+                    },
+                  },
+                ]);
+              }}
+            >
+              <Text
+                style={{
+                  color: COLORS.accentLight,
+                  fontSize: 13,
+                  fontWeight: "600",
+                }}
+              >
+                Ver y copiar 📋
+              </Text>
+            </TouchableOpacity>
           </Fila>
         </Seccion>
 
