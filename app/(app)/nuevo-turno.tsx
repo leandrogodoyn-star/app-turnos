@@ -217,6 +217,9 @@ export default function GestionarHorarios() {
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [serviciosLista, setServiciosLista] = useState<
+    { id: string; nombre: string }[]
+  >([]);
 
   const [horaInicio, setHoraInicio] = useState("08:00");
   const [horaFin, setHoraFin] = useState("19:00");
@@ -248,6 +251,15 @@ export default function GestionarHorarios() {
         setHoraFin(cierre);
         setHoraFinTemp(cierre);
       }
+
+      // Cargar servicios
+      const { data: servicios } = await supabase
+        .from("servicios")
+        .select("id, nombre")
+        .eq("admin_id", id)
+        .eq("activo", true);
+
+      setServiciosLista(servicios || []);
     });
   }, []);
 
@@ -854,7 +866,8 @@ export default function GestionarHorarios() {
                 marginBottom: 24,
               }}
             >
-              Los turnos se generarán cada 30 minutos dentro de este rango.
+              Los turnos se generarán dentro de este rango según la duración
+              configurada.
             </Text>
             <View style={{ flexDirection: "row", gap: 16, marginBottom: 28 }}>
               <HoraPicker
@@ -1065,26 +1078,64 @@ export default function GestionarHorarios() {
                     marginBottom: 8,
                   }}
                 >
-                  NOMBRE DEL SERVICIO
+                  SERVICIO
                 </Text>
-                <TextInput
-                  value={formEvento.servicio_especial}
-                  onChangeText={(v) =>
-                    setFormEvento((p) => ({ ...p, servicio_especial: v }))
-                  }
-                  placeholder="Ej: Corte + barba promocional"
-                  placeholderTextColor={COLORS.textMuted}
-                  style={{
-                    backgroundColor: COLORS.bg,
-                    borderWidth: 1,
-                    borderColor: COLORS.border,
-                    borderRadius: 12,
-                    padding: 14,
-                    color: COLORS.textPrimary,
-                    fontSize: 15,
-                    marginBottom: 20,
-                  }}
-                />
+                {serviciosLista.length === 0 ? (
+                  <Text
+                    style={{
+                      color: COLORS.textMuted,
+                      fontSize: 13,
+                      marginBottom: 20,
+                    }}
+                  >
+                    No tenés servicios cargados. Agregá uno en la sección de
+                    servicios.
+                  </Text>
+                ) : (
+                  <ScrollView
+                    style={{ maxHeight: 180, marginBottom: 20 }}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {serviciosLista.map((s) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() =>
+                          setFormEvento((p) => ({
+                            ...p,
+                            servicio_especial: s.nombre,
+                          }))
+                        }
+                        style={{
+                          padding: 14,
+                          borderRadius: 12,
+                          marginBottom: 8,
+                          backgroundColor:
+                            formEvento.servicio_especial === s.nombre
+                              ? COLORS.accentDim
+                              : COLORS.bg,
+                          borderWidth: 1,
+                          borderColor:
+                            formEvento.servicio_especial === s.nombre
+                              ? COLORS.accent + "88"
+                              : COLORS.border,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              formEvento.servicio_especial === s.nombre
+                                ? COLORS.accentLight
+                                : COLORS.textPrimary,
+                            fontSize: 14,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {s.nombre}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
               </>
             )}
 
@@ -1123,10 +1174,7 @@ export default function GestionarHorarios() {
                   formEvento.tipo === "servicio_especial" &&
                   !formEvento.servicio_especial.trim()
                 ) {
-                  Alert.alert(
-                    "Atención",
-                    "Ingresá el nombre del servicio especial.",
-                  );
+                  Alert.alert("Atención", "Elegí un servicio de la lista.");
                   return;
                 }
                 const { data, error } = await supabase
