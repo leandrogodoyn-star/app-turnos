@@ -1,10 +1,10 @@
 const express = require("express");
+const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const webhookRoutes = require("./routes/webhook.routes");
 
-const app = express(); // ← FALTABA ESTO
-const cors = require("cors");
+const app = express();
 
 app.use(
   cors({
