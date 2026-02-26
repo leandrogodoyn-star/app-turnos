@@ -6,14 +6,7 @@ const webhookRoutes = require("./routes/webhook.routes");
 
 const app = express();
 
-app.use(
-  cors({
-    origin: [
-      "https://harmonious-fudge-da1512.netlify.app",
-      "http://localhost:3000",
-    ],
-  }),
-);
+app.use(cors());
 
 app.set("trust proxy", 1);
 app.use(helmet());
