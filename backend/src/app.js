@@ -4,6 +4,16 @@ const rateLimit = require("express-rate-limit");
 const webhookRoutes = require("./routes/webhook.routes");
 
 const app = express(); // ← FALTABA ESTO
+const cors = require("cors");
+
+app.use(
+  cors({
+    origin: [
+      "https://harmonious-fudge-da1512.netlify.app",
+      "http://localhost:3000",
+    ],
+  }),
+);
 
 app.set("trust proxy", 1);
 app.use(helmet());
