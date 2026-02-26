@@ -24,4 +24,46 @@ app.post("/regenerar-horarios", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/crear-preferencia", async (req, res) => {
+  const { access_token, titulo, precio, nombre, telefono } = req.body;
+
+  try {
+    const response = await fetch(
+      "https://api.mercadopago.com/checkout/preferences",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({
+          items: [
+            {
+              title: titulo,
+              quantity: 1,
+              unit_price: precio,
+              currency_id: "ARS",
+            },
+          ],
+          payer: {
+            name: nombre,
+            phone: { number: telefono },
+          },
+          back_urls: {
+            success: "https://harmonious-fudge-da1512.netlify.app/confirmado",
+            failure: "https://harmonious-fudge-da1512.netlify.app/pago-fallido",
+            pending: "https://harmonious-fudge-da1512.netlify.app/confirmado",
+          },
+          auto_return: "approved",
+        }),
+      },
+    );
+
+    const data = await response.json();
+    res.json({ init_point: data.init_point });
+  } catch (error) {
+    res.status(500).json({ error: "Error al crear preferencia" });
+  }
+});
+
 module.exports = app;

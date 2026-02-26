@@ -96,6 +96,9 @@ export default function Configuracion() {
   const [guardando, setGuardando] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [codigoBot, setCodigoBot] = useState("");
+  const [mpHabilitado, setMpHabilitado] = useState(false);
+  const [mpObligatorio, setMpObligatorio] = useState(false);
+  const [mpAccessToken, setMpAccessToken] = useState("");
 
   const [nombre, setNombre] = useState("");
   const [duracion, setDuracion] = useState(30);
@@ -124,6 +127,9 @@ export default function Configuracion() {
     if (perfil) {
       setNombre(perfil.nombre || "");
       setCodigoBot(perfil.codigo_bot || "");
+      setMpHabilitado(perfil.mp_habilitado || false);
+      setMpObligatorio(perfil.mp_obligatorio || false);
+      setMpAccessToken(perfil.mp_access_token || "");
       setDuracion(perfil.duracion_turno || 30);
       setHoraApertura(perfil.hora_apertura?.slice(0, 5) || "09:00");
       setHoraCierre(perfil.hora_cierre?.slice(0, 5) || "18:00");
@@ -159,6 +165,9 @@ export default function Configuracion() {
         dias_trabajo: diasTrabajo,
         anticipacion_minima: anticipacion,
         limite_turnos_dia: limiteTurnos,
+        mp_habilitado: mpHabilitado,
+        mp_obligatorio: mpObligatorio,
+        mp_access_token: mpAccessToken.trim() || null,
       })
       .eq("id", userId);
 
@@ -519,6 +528,76 @@ export default function Configuracion() {
               </Text>
             </TouchableOpacity>
           </Fila>
+        </Seccion>
+        {/* Mercado Pago */}
+        <Seccion titulo="MERCADO PAGO">
+          <Fila label="Habilitar pagos online">
+            <TouchableOpacity
+              onPress={() => setMpHabilitado(!mpHabilitado)}
+              style={{
+                width: 44,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: mpHabilitado ? COLORS.accent : COLORS.border,
+                justifyContent: "center",
+                paddingHorizontal: 2,
+              }}
+            >
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: "white",
+                  alignSelf: mpHabilitado ? "flex-end" : "flex-start",
+                }}
+              />
+            </TouchableOpacity>
+          </Fila>
+          {mpHabilitado && (
+            <>
+              <Fila label="Pago obligatorio">
+                <TouchableOpacity
+                  onPress={() => setMpObligatorio(!mpObligatorio)}
+                  style={{
+                    width: 44,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: mpObligatorio
+                      ? COLORS.accent
+                      : COLORS.border,
+                    justifyContent: "center",
+                    paddingHorizontal: 2,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      backgroundColor: "white",
+                      alignSelf: mpObligatorio ? "flex-end" : "flex-start",
+                    }}
+                  />
+                </TouchableOpacity>
+              </Fila>
+              <Fila label="Access Token" ultimo>
+                <TextInput
+                  value={mpAccessToken}
+                  onChangeText={setMpAccessToken}
+                  placeholder="APP_USR-..."
+                  placeholderTextColor={COLORS.textMuted}
+                  secureTextEntry
+                  style={{
+                    color: COLORS.textPrimary,
+                    fontSize: 12,
+                    textAlign: "right",
+                    minWidth: 140,
+                  }}
+                />
+              </Fila>
+            </>
+          )}
         </Seccion>
 
         {/* Botón guardar */}
