@@ -796,6 +796,14 @@ export default function Dashboard() {
                 },
               },
               {
+                label: "Estadísticas",
+                icon: "📊",
+                onPress: () => {
+                  router.push("/estadisticas");
+                  setMenuVisible(false);
+                },
+              },
+              {
                 label: "Servicios",
                 icon: "✂️",
                 onPress: () => {
