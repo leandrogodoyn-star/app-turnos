@@ -505,8 +505,9 @@ export default function Configuracion() {
                   {
                     text: "Copiar",
                     onPress: () => {
-                      import("expo-clipboard").then((Clipboard) => {
-                        Clipboard.setStringAsync(link);
+                      const link = `https://harmonious-fudge-da1512.netlify.app/reservar/${codigoBot}`;
+                      import("expo-clipboard").then(({ setStringAsync }) => {
+                        setStringAsync(link);
                         Alert.alert(
                           "✅ Copiado",
                           "Link copiado al portapapeles.",

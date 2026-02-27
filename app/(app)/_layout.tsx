@@ -19,7 +19,6 @@ async function registrarPushToken() {
   if (finalStatus !== "granted") return;
 
   const token = (await Notifications.getExpoPushTokenAsync()).data;
-
   const { data: auth } = await supabase.auth.getUser();
   if (auth?.user?.id) {
     await supabase
@@ -38,14 +37,6 @@ export default function AppLayout() {
   }, []);
 
   const checkSession = async () => {
-    const checkSession = async () => {
-      await supabase.auth.signOut(); // ← agregá esta línea temporalmente
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        router.replace("/login");
-      }
-      setLoading(false);
-    };
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       router.replace("/login");

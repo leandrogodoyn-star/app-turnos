@@ -558,7 +558,6 @@ export default function Dashboard() {
       .select("*")
       .eq("id", userId)
       .single();
-    console.log("PERFIL DESDE SUPABASE:", JSON.stringify(perfilData));
     if (perfilData?.avatar) {
       const urlLimpia = perfilData.avatar.split("?")[0];
       perfilData.avatar = `${urlLimpia}?t=${Date.now()}`;
@@ -969,8 +968,8 @@ export default function Dashboard() {
                 textAlign: "center",
               }}
             >
-              Todavía no hay turnos reservados.{"\n"}Los turnos del bot de
-              WhatsApp aparecerán acá.
+              Todavía no hay turnos reservados.{"\n"}Cuando un cliente reserve
+              desde tu link, aparecerá acá.
             </Text>
           </View>
         }
