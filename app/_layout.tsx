@@ -1,17 +1,7 @@
 import { Stack } from "expo-router";
-import { ReactNode } from "react";
-import Toast from "react-native-toast-message";
 
-type RootLayoutProps = {
-  children: ReactNode;
-};
-
-export default function RootLayout({ children }: RootLayoutProps) {
+export default function RootLayout() {
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }} />
-      {children}
-      <Toast />
-    </>
+    <Stack screenOptions={{ headerShown: false }} />
   );
 }

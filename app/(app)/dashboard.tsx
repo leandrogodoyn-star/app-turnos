@@ -291,6 +291,7 @@ function ReservaCard({
               padding: 16,
               paddingLeft: 20,
               gap: 10,
+              backgroundColor: '#1C1F2B'
             }}
           >
             {item.servicio && (
@@ -514,12 +515,8 @@ export default function Dashboard() {
   const [filtro, setFiltro] = useState<"todos" | "pendiente" | "completado">("todos");
   const [filtroFecha, setFiltroFecha] = useState<string | null>(null);
 
-  const cargarReservas = async (mostrarCarga = false) => {
-    if (mostrarCarga) setCargando(true);
+  const cargarReservas = async (userId: string) => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) return;
 
       const { data, error } = await supabase
         .from("reservas")
@@ -570,36 +567,65 @@ export default function Dashboard() {
     }
   };
 
-  const cargarPerfil = async () => {
-    const { data } = await supabase.auth.getUser();
-    const userId = data?.user?.id;
-    if (!userId) return;
+  const cargarPerfil = async (userId: string) => {
+    try {
 
-    const { data: perfilData } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
-    if (perfilData?.avatar) {
-      const urlLimpia = perfilData.avatar.split("?")[0];
-      perfilData.avatar = `${urlLimpia}?t=${Date.now()}`;
+      const { data: perfilData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+      if (perfilData?.avatar) {
+        const urlLimpia = perfilData.avatar.split("?")[0];
+        perfilData.avatar = `${urlLimpia}?t=${Date.now()}`;
+      }
+
+      setPerfil(perfilData);
+    } catch (err: any) {
+      console.error("[Dashboard] Error loading profile:", err);
     }
-
-    setPerfil(perfilData);
   };
 
   useEffect(() => {
-    cargarPerfil();
-    cargarReservas(true);
+    const initData = async () => {
+      setCargando(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
 
-    // Suscripción Realtime: se actualiza automáticamente cuando hay cambios
+        console.log("[Dashboard] Initializing for UserID:", userId);
+
+        if (!userId) {
+          router.replace("/login");
+          return;
+        }
+
+        // Parallel load
+        await Promise.all([
+          cargarPerfil(userId),
+          cargarReservas(userId)
+        ]);
+
+      } catch (err) {
+        console.error("[Dashboard] Error in initData:", err);
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    initData();
+
+    // Suscripción Realtime (sin recargas completas, solo para cambios de otros)
     const channel = supabase
       .channel("reservas-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "reservas" },
-        () => {
-          cargarReservas(false);
+        async (payload) => {
+          console.log("[Dashboard] Realtime change detected:", payload.eventType);
+          // Refetch silent
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) cargarReservas(session.user.id);
         },
       )
       .subscribe();
@@ -798,8 +824,7 @@ export default function Dashboard() {
               },
               {
                 label: "Configuración",
-                icon: "⚙️",
-                onPress: () => {
+                icon: "⚙️", onPress: () => {
                   router.push("/configuracion");
                   setMenuVisible(false);
                 },
@@ -1019,11 +1044,6 @@ export default function Dashboard() {
                       minWidth: 56,
                       borderWidth: 1,
                       borderColor: sel ? COLORS.accent : COLORS.border,
-                      shadowColor: sel ? COLORS.accent : "transparent",
-                      shadowOffset: { width: 0, height: 3 },
-                      shadowOpacity: 0.4,
-                      shadowRadius: 6,
-                      elevation: sel ? 4 : 0,
                     }}
                   >
                     <Text
@@ -1062,11 +1082,6 @@ export default function Dashboard() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                shadowColor: COLORS.accent,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.4,
-                shadowRadius: 12,
-                elevation: 8,
               }}
             >
               <Text
@@ -1074,7 +1089,6 @@ export default function Dashboard() {
                   color: "white",
                   fontWeight: "700",
                   fontSize: 15,
-                  letterSpacing: 0.3,
                 }}
               >
                 🗓 Gestionar horarios
@@ -1103,7 +1117,6 @@ export default function Dashboard() {
                       color: filtro === f ? "white" : COLORS.textMuted,
                       fontSize: 10,
                       fontWeight: "700",
-                      letterSpacing: 0.5,
                     }}
                   >
                     {f === "todos"
@@ -1252,11 +1265,6 @@ export default function Dashboard() {
                 padding: 14,
                 borderRadius: 12,
                 marginBottom: 10,
-                shadowColor: COLORS.accent,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.35,
-                shadowRadius: 8,
-                elevation: 6,
               }}
             >
               <Text

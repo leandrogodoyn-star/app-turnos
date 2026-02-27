@@ -212,17 +212,19 @@ export default function GestionarHorarios() {
   const dias = generarDias();
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      const id = data?.user?.id;
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const id = session?.user?.id;
       if (!id) return;
       setUserId(id);
 
-      const { data: perfil } = await supabase
-        .from("profiles")
-        .select("hora_apertura, hora_cierre")
-        .eq("id", id)
-        .single();
+      // Parallel fetch
+      const [perfilRes, serviciosRes] = await Promise.all([
+        supabase.from("profiles").select("hora_apertura, hora_cierre").eq("id", id).single(),
+        supabase.from("servicios").select("id, nombre").eq("admin_id", id).eq("activo", true)
+      ]);
 
+      const perfil = perfilRes.data;
       if (perfil?.hora_apertura) {
         const apertura = perfil.hora_apertura.slice(0, 5);
         setHoraInicio(apertura);
@@ -234,21 +236,14 @@ export default function GestionarHorarios() {
         setHoraFinTemp(cierre);
       }
 
-      // Cargar servicios
-      const { data: servicios } = await supabase
-        .from("servicios")
-        .select("id, nombre")
-        .eq("admin_id", id)
-        .eq("activo", true);
-
-      setServiciosLista(servicios || []);
-    });
+      setServiciosLista(serviciosRes.data || []);
+    };
+    init();
   }, []);
 
   useEffect(() => {
     if (!fechaSeleccionada || !userId) return;
-    cargarSlots();
-    cargarEvento();
+    Promise.all([cargarSlots(), cargarEvento()]);
   }, [fechaSeleccionada, userId]);
 
   const cargarEvento = async () => {

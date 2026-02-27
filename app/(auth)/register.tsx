@@ -1,17 +1,17 @@
+import { router } from "expo-router";
 import { useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
-import { router } from "expo-router";
 
 const COLORS = {
   bg: "#0F1117",
@@ -61,13 +61,12 @@ export default function Register() {
     }
 
     if (data.user) {
-      await supabase.from("perfiles").insert({
+      await supabase.from("profiles").insert({
         id: data.user.id,
         nombre,
-        rol: "dueno",
+        tipo: 'admin',
       });
 
-      // Iniciar sesión automáticamente después del registro
       const { error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -97,7 +96,6 @@ export default function Register() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
         <View style={{ alignItems: "center", marginBottom: 48 }}>
           <View
             style={{
@@ -136,9 +134,7 @@ export default function Register() {
           </Text>
         </View>
 
-        {/* Formulario */}
         <View style={{ gap: 16, marginBottom: 28 }}>
-          {/* Nombre del negocio */}
           <View>
             <Text
               style={{
@@ -169,7 +165,6 @@ export default function Register() {
             />
           </View>
 
-          {/* Email */}
           <View>
             <Text
               style={{
@@ -202,7 +197,6 @@ export default function Register() {
             />
           </View>
 
-          {/* Password */}
           <View>
             <Text
               style={{
@@ -252,7 +246,6 @@ export default function Register() {
           </View>
         </View>
 
-        {/* Botón registro */}
         <TouchableOpacity
           onPress={handleRegister}
           disabled={cargando}
@@ -261,11 +254,6 @@ export default function Register() {
             padding: 18,
             borderRadius: 14,
             alignItems: "center",
-            shadowColor: COLORS.accent,
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.4,
-            shadowRadius: 12,
-            elevation: 8,
             opacity: cargando ? 0.7 : 1,
             marginBottom: 20,
           }}
@@ -286,7 +274,6 @@ export default function Register() {
           )}
         </TouchableOpacity>
 
-        {/* Ir a login */}
         <TouchableOpacity
           onPress={() => router.push("/login")}
           style={{ alignItems: "center", padding: 10 }}

@@ -12,6 +12,11 @@ export default function Paywall({ title, description }: PaywallProps) {
         Linking.openURL(payPalLink);
     };
 
+    const payWithMercadoPago = () => {
+        const mpLink = "https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=15021025ff074ead820a946e80e59d92";
+        Linking.openURL(mpLink);
+    };
+
     return (
         <View style={styles.container}>
             <View style={styles.card}>
@@ -27,6 +32,10 @@ export default function Paywall({ title, description }: PaywallProps) {
 
                 <TouchableOpacity style={styles.button} onPress={payWithPayPal}>
                     <Text style={styles.buttonText}>Pagar con PayPal</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.altButton} onPress={payWithMercadoPago}>
+                    <Text style={styles.altButtonText}>Pagar con Mercado Pago</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -97,6 +106,22 @@ const styles = StyleSheet.create({
     buttonText: {
         color: "white",
         fontSize: 16,
+        fontWeight: "700",
+    },
+    altButton: {
+        backgroundColor: "transparent",
+        paddingVertical: 16,
+        paddingHorizontal: 24,
+        borderRadius: 14,
+        width: "100%",
+        alignItems: "center",
+        marginTop: 12,
+        borderWidth: 1.5,
+        borderColor: COLORS.accent,
+    },
+    altButtonText: {
+        color: COLORS.accentLight,
+        fontSize: 15,
         fontWeight: "700",
     },
 });

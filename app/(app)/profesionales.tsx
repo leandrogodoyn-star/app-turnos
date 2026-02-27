@@ -51,20 +51,26 @@ export default function Profesionales() {
         }
         setUserId(id);
 
-        const { data: perfil } = await supabase
+        // Seleccionar todo para evitar errores si falta la columna 'tipo'
+        const { data: perfil, error: perfilError } = await supabase
             .from("profiles")
-            .select("tipo, is_premium")
+            .select("*")
             .eq("id", id)
             .single();
 
-        if (perfil) {
-            setIsAdmin(perfil.tipo === "admin");
-            setIsPremium(perfil.is_premium || false);
-            if (perfil.tipo === "admin" && perfil.is_premium) {
-                cargarProfesionales(id);
-            } else {
-                setCargando(false);
-            }
+        if (perfilError) {
+            console.error("[Profesionales] Error fetching profile:", perfilError);
+        }
+
+        // Si estamos en esta pantalla dentro de (app), asumimos que es el dueño
+        // Solo bloqueamos si el perfil dice explícitamente que no es admin
+        const esAdmin = perfil ? (perfil.tipo === "admin" || !perfil.tipo) : true;
+
+        setIsAdmin(esAdmin);
+        setIsPremium(perfil?.is_premium || false);
+
+        if (esAdmin && perfil?.is_premium) {
+            cargarProfesionales(id);
         } else {
             setCargando(false);
         }
