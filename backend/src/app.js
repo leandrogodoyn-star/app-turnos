@@ -2,32 +2,76 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const { z } = require("zod");
 const webhookRoutes = require("./routes/webhook.routes");
+const { regenerarHorariosPorNegocio } = require("./services/cron.service");
 
 const app = express();
 
 app.use(cors());
 
+// Seguridad: trust proxy para rate limiter detrás de hosting (Render/Heroku)
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "1mb" })); // Evitar payloads gigantes
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
-app.use(rateLimit({ windowMs: 60000, max: 60 }));
+// Rate limiting global: 100 requests por minuto por IP
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { error: "Demasiadas peticiones. Intente más tarde." }
+});
+app.use(limiter);
 
 app.use("/webhook", webhookRoutes);
 
 app.get("/health", (req, res) => res.send("OK"));
-const { regenerarHorariosPorNegocio } = require("./services/cron.service");
 
-app.post("/regenerar-horarios", async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: "Falta userId" });
-  await regenerarHorariosPorNegocio(userId);
-  res.json({ ok: true });
+// Validadores Zod
+const bodyRegenerarSchema = z.object({
+  userId: z.string().uuid({ message: "userId debe ser un UUID válido" }),
 });
 
-app.post("/crear-preferencia", async (req, res) => {
+const bodyPreferenciaSchema = z.object({
+  access_token: z.string().min(10, { message: "Access token inválido" }),
+  titulo: z.string().min(1).max(100),
+  precio: z.number().positive(),
+  nombre: z.string().min(2).max(100),
+  telefono: z.string().min(6).max(20),
+});
+
+const bodyNotificacionSchema = z.object({
+  push_token: z.string().startsWith("ExponentPushToken", { message: "Token inválido" }),
+  cliente_nombre: z.string().min(1).max(100),
+  fecha: z.string().min(1),
+  hora: z.string().min(1),
+  servicio: z.string().nullable().optional(),
+});
+
+// Middleware de validación genérico
+const validateBody = (schema) => (req, res, next) => {
+  try {
+    req.body = schema.parse(req.body);
+    next();
+  } catch (err) {
+    return res.status(400).json({
+      error: "Datos de entrada inválidos",
+      detalles: err.errors.map(e => `${e.path.join('.')}: ${e.message}`)
+    });
+  }
+};
+
+app.post("/regenerar-horarios", validateBody(bodyRegenerarSchema), async (req, res) => {
+  try {
+    await regenerarHorariosPorNegocio(req.body.userId);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: "Error al regenerar horarios" });
+  }
+});
+
+app.post("/crear-preferencia", validateBody(bodyPreferenciaSchema), async (req, res) => {
   const { access_token, titulo, precio, nombre, telefono } = req.body;
 
   try {
@@ -62,19 +106,23 @@ app.post("/crear-preferencia", async (req, res) => {
       },
     );
 
+    if (!response.ok) {
+      throw new Error(`Error MP: ${response.status}`);
+    }
+
     const data = await response.json();
     res.json({ init_point: data.init_point });
   } catch (error) {
-    res.status(500).json({ error: "Error al crear preferencia" });
+    console.error("Error Mercado Pago:", error);
+    res.status(500).json({ error: "Error interno al crear preferencia de pago" });
   }
 });
-app.post("/notificar-reserva", async (req, res) => {
+
+app.post("/notificar-reserva", validateBody(bodyNotificacionSchema), async (req, res) => {
   const { push_token, cliente_nombre, fecha, hora, servicio } = req.body;
 
-  if (!push_token) return res.json({ ok: false });
-
   try {
-    await fetch("https://exp.host/--/api/v2/push/send", {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -84,9 +132,15 @@ app.post("/notificar-reserva", async (req, res) => {
         sound: "default",
       }),
     });
+
+    if (!response.ok) {
+      throw new Error(`Error Expo: ${response.status}`);
+    }
+
     res.json({ ok: true });
   } catch (error) {
-    res.status(500).json({ error: "Error al enviar notificación" });
+    console.error("Error Notificación:", error);
+    res.status(500).json({ error: "Error al enviar notificación push" });
   }
 });
 
