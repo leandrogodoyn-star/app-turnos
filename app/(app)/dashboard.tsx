@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import AdBanner from "../../components/BannerAd";
 import { COLORS } from "../../constants/colors";
 import { supabase } from "../../lib/supabase";
 import { cambiarFoto } from "../../lib/utilidades";
@@ -721,6 +722,14 @@ export default function Dashboard() {
             >
               {perfil?.nombre || "Mi negocio"}
             </Text>
+            {!perfil?.is_premium && (
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, backgroundColor: COLORS.surface, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, alignSelf: "flex-start", borderWidth: 1, borderColor: COLORS.border }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: (perfil?.reservas_mes || 0) >= 50 ? COLORS.danger : COLORS.success, marginRight: 8 }} />
+                <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontWeight: "600" }}>
+                  {perfil?.reservas_mes || 0} / 60 turnos
+                </Text>
+              </View>
+            )}
           </View>
 
           <TouchableOpacity
@@ -808,6 +817,14 @@ export default function Dashboard() {
                 icon: "✂️",
                 onPress: () => {
                   router.push("/servicios");
+                  setMenuVisible(false);
+                },
+              },
+              {
+                label: "Profesionales",
+                icon: "👥",
+                onPress: () => {
+                  router.push("/profesionales" as any);
                   setMenuVisible(false);
                 },
               },
@@ -1270,6 +1287,7 @@ export default function Dashboard() {
           </View>
         </View>
       </Modal>
+      <AdBanner isPremium={perfil?.is_premium} />
     </View>
   );
 }

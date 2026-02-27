@@ -118,6 +118,50 @@ app.post("/crear-preferencia", validateBody(bodyPreferenciaSchema), async (req, 
   }
 });
 
+app.get("/mp-auth-callback", async (req, res) => {
+  const { code, state } = req.query;
+
+  if (!code || !state) {
+    return res.status(400).send("Faltan parámetros (code o state)");
+  }
+
+  try {
+    // 1. Intercambiar code por access_token
+    const response = await fetch("https://api.mercadopago.com/oauth/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_secret: process.env.MP_CLIENT_SECRET,
+        client_id: process.env.MP_CLIENT_ID,
+        grant_type: "authorization_code",
+        code: code,
+        redirect_uri: process.env.MP_REDIRECT_URI,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Error al intercambiar token:", errorData);
+      throw new Error("Error en el intercambio de tokens con Mercado Pago");
+    }
+
+    const data = await response.json();
+    const accessToken = data.access_token;
+
+    // 2. Actualizar perfil en Supabase (usando state como userId)
+    // Nota: Aquí necesitaríamos configurar supabase-js en el backend si aún no está, 
+    // o simplemente devolver una página de éxito que la app procese.
+
+    // Por ahora, redirigimos a una página de éxito o error
+    res.redirect(`https://harmonious-fudge-da1512.netlify.app/vincular-exito?token=${accessToken}`);
+  } catch (error) {
+    console.error("Error en OAuth callback:", error);
+    res.status(500).send("Error al vincular la cuenta. Intente nuevamente.");
+  }
+});
+
 app.post("/notificar-reserva", validateBody(bodyNotificacionSchema), async (req, res) => {
   const { push_token, cliente_nombre, fecha, hora, servicio } = req.body;
 

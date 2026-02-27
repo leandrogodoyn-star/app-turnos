@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   ScrollView,
   StatusBar,
   Text,
@@ -544,6 +545,22 @@ export default function Configuracion() {
           </Fila>
           {mpHabilitado && (
             <>
+              <View style={{ padding: 16, backgroundColor: COLORS.bg, margin: 16, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border }}>
+                <Text style={{ color: COLORS.textPrimary, fontSize: 13, fontWeight: "700", marginBottom: 8 }}>Vincular cuenta automáticamente</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: 12, marginBottom: 16 }}>Conectá tu cuenta de Mercado Pago con un solo clic para empezar a cobrar online.</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const clientId = "TU_CLIENT_ID"; // Placeholder
+                    const redirectUri = encodeURIComponent("https://tu-backend.com/mp-auth-callback");
+                    const authUrl = `https://auth.mercadopago.com.ar/authorization?client_id=${clientId}&response_type=code&platform_id=mp&redirect_uri=${redirectUri}`;
+                    Linking.openURL(authUrl);
+                  }}
+                  style={{ backgroundColor: "#009EE3", padding: 12, borderRadius: 8, alignItems: "center" }}
+                >
+                  <Text style={{ color: "white", fontWeight: "700", fontSize: 14 }}>Conectar Mercado Pago</Text>
+                </TouchableOpacity>
+              </View>
+
               <Fila label="Pago obligatorio">
                 <TouchableOpacity
                   onPress={() => setMpObligatorio(!mpObligatorio)}
@@ -569,21 +586,31 @@ export default function Configuracion() {
                   />
                 </TouchableOpacity>
               </Fila>
-              <Fila label="Access Token" ultimo>
-                <TextInput
-                  value={mpAccessToken}
-                  onChangeText={setMpAccessToken}
-                  placeholder="APP_USR-..."
-                  placeholderTextColor={COLORS.textMuted}
-                  secureTextEntry
-                  style={{
-                    color: COLORS.textPrimary,
-                    fontSize: 12,
-                    textAlign: "right",
-                    minWidth: 140,
-                  }}
-                />
-              </Fila>
+
+              <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: 10, fontWeight: "700", marginBottom: 12 }}>CONFIGURACIÓN AVANZADA</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>Access Token manual</Text>
+                  <TextInput
+                    value={mpAccessToken}
+                    onChangeText={setMpAccessToken}
+                    placeholder="APP_USR-..."
+                    placeholderTextColor={COLORS.textMuted}
+                    secureTextEntry
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontSize: 12,
+                      textAlign: "right",
+                      minWidth: 140,
+                      backgroundColor: COLORS.bg,
+                      padding: 6,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: COLORS.border
+                    }}
+                  />
+                </View>
+              </View>
             </>
           )}
         </Seccion>
