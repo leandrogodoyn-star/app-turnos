@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   FlatList,
@@ -8,12 +9,14 @@ import {
   Linking,
   Modal,
   PanResponder,
+  ScrollView,
   StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import { COLORS } from "../../constants/colors";
 import { supabase } from "../../lib/supabase";
 import { cambiarFoto } from "../../lib/utilidades";
 
@@ -29,27 +32,6 @@ type Reserva = {
   fecha?: string;
   hora?: string;
   estado: EstadoReserva;
-};
-
-const COLORS = {
-  bg: "#0F1117",
-  surface: "#1A1D27",
-  surfaceAlt: "#21253A",
-  border: "#2A2E45",
-  accent: "#6C63FF",
-  accentLight: "#8B85FF",
-  accentDim: "#6C63FF22",
-  danger: "#FF5C6A",
-  dangerDim: "#FF5C6A22",
-  success: "#22D3A5",
-  successDim: "#22D3A522",
-  warning: "#FFAA40",
-  warningDim: "#FFAA4022",
-  whatsapp: "#25D366",
-  whatsappDim: "#25D36622",
-  textPrimary: "#EEEEF5",
-  textSecondary: "#8B8FA8",
-  textMuted: "#4A4E6A",
 };
 
 function Badge({ estado }: { estado: EstadoReserva }) {
@@ -491,60 +473,99 @@ function ReservaCard({
   );
 }
 
+function hoyISO() {
+  const h = new Date();
+  const yyyy = h.getFullYear();
+  const mm = String(h.getMonth() + 1).padStart(2, "0");
+  const dd = String(h.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function generarDiasFiltro() {
+  const dias = [];
+  const diasSemana = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const hoy = new Date();
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(hoy);
+    d.setDate(hoy.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    dias.push({
+      value: `${yyyy}-${mm}-${dd}`,
+      label: i === 0 ? "Hoy" : i === 1 ? "Mañ" : `${d.getDate()} ${meses[d.getMonth()]}`,
+      diaSemana: diasSemana[d.getDay()],
+    });
+  }
+  return dias;
+}
+
+const DIAS_FILTRO = generarDiasFiltro();
+
 export default function Dashboard() {
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [perfil, setPerfil] = useState<any>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [editarNombre, setEditarNombre] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
-  const [filtro, setFiltro] = useState<"todos" | "pendiente" | "completado">(
-    "todos",
-  );
+  const [cargando, setCargando] = useState(true);
+  const [filtro, setFiltro] = useState<"todos" | "pendiente" | "completado">("todos");
+  const [filtroFecha, setFiltroFecha] = useState<string | null>(null);
 
-  const cargarReservas = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id;
-    if (!userId) return;
+  const cargarReservas = async (mostrarCarga = false) => {
+    if (mostrarCarga) setCargando(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) return;
 
-    const { data } = await supabase
-      .from("reservas")
-      .select(
-        `
-        id,
-        admin_id,
-        horario_id,
-        cliente_nombre,
-        cliente_telefono,
-        servicio,
-        estado,
-        horarios (fecha, hora, disponible)
-      `,
-      )
-      .eq("admin_id", userId)
-      .order("horario_id", { ascending: true });
+      const { data, error } = await supabase
+        .from("reservas")
+        .select(
+          `
+          id,
+          admin_id,
+          horario_id,
+          cliente_nombre,
+          cliente_telefono,
+          servicio,
+          estado,
+          horarios (fecha, hora, disponible)
+        `,
+        )
+        .eq("admin_id", userId)
+        .order("horario_id", { ascending: true });
 
-    if (data) {
-      const reservasFormateadas: Reserva[] = data.map((r: any) => ({
-        id: r.id,
-        admin_id: r.admin_id,
-        horario_id: r.horario_id,
-        cliente_nombre: r.cliente_nombre,
-        cliente_telefono: r.cliente_telefono,
-        servicio: r.servicio,
-        fecha: r.horarios?.fecha,
-        hora: r.horarios?.hora?.slice(0, 5),
-        estado: (r.estado === "completado"
-          ? "completado"
-          : "pendiente") as EstadoReserva,
-      }));
+      if (error) throw error;
 
-      reservasFormateadas.sort((a, b) => {
-        if (a.fecha !== b.fecha)
-          return (a.fecha || "") > (b.fecha || "") ? 1 : -1;
-        return (a.hora || "") > (b.hora || "") ? 1 : -1;
-      });
+      if (data) {
+        const reservasFormateadas: Reserva[] = data.map((r: any) => ({
+          id: r.id,
+          admin_id: r.admin_id,
+          horario_id: r.horario_id,
+          cliente_nombre: r.cliente_nombre,
+          cliente_telefono: r.cliente_telefono,
+          servicio: r.servicio,
+          fecha: r.horarios?.fecha,
+          hora: r.horarios?.hora?.slice(0, 5),
+          estado: (r.estado === "completado"
+            ? "completado"
+            : "pendiente") as EstadoReserva,
+        }));
 
-      setReservas(reservasFormateadas);
+        reservasFormateadas.sort((a, b) => {
+          if (a.fecha !== b.fecha)
+            return (a.fecha || "") > (b.fecha || "") ? 1 : -1;
+          return (a.hora || "") > (b.hora || "") ? 1 : -1;
+        });
+
+        setReservas(reservasFormateadas);
+      }
+    } catch (err: any) {
+      Alert.alert("Error", "No se pudieron cargar las reservas. Intenta de nuevo.");
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -568,43 +589,68 @@ export default function Dashboard() {
 
   useEffect(() => {
     cargarPerfil();
-    cargarReservas();
+    cargarReservas(true);
 
-    const intervalo = setInterval(() => {
-      cargarReservas();
-    }, 30000);
+    // Suscripción Realtime: se actualiza automáticamente cuando hay cambios
+    const channel = supabase
+      .channel("reservas-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "reservas" },
+        () => {
+          cargarReservas(false);
+        },
+      )
+      .subscribe();
 
-    return () => clearInterval(intervalo);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const cancelarReserva = async (id: string, horarioId: string) => {
-    await supabase.from("reservas").delete().eq("id", id);
-    await supabase
-      .from("horarios")
-      .update({ disponible: true })
-      .eq("id", horarioId);
-    setReservas((prev) => prev.filter((r) => r.id !== id));
+    try {
+      const { error } = await supabase.from("reservas").delete().eq("id", id);
+      if (error) throw error;
+      await supabase
+        .from("horarios")
+        .update({ disponible: true })
+        .eq("id", horarioId);
+      setReservas((prev) => prev.filter((r) => r.id !== id));
+    } catch {
+      Alert.alert("Error", "No se pudo cancelar el turno. Intenta de nuevo.");
+    }
   };
 
   const completarReserva = async (id: string, horarioId: string) => {
-    await supabase
-      .from("reservas")
-      .update({ estado: "completado" })
-      .eq("id", id);
-    await supabase
-      .from("horarios")
-      .update({ disponible: false })
-      .eq("id", horarioId);
-    setReservas((prev) =>
-      prev.map((r) =>
-        r.id === id ? { ...r, estado: "completado" as EstadoReserva } : r,
-      ),
-    );
+    try {
+      const { error } = await supabase
+        .from("reservas")
+        .update({ estado: "completado" })
+        .eq("id", id);
+      if (error) throw error;
+      await supabase
+        .from("horarios")
+        .update({ disponible: false })
+        .eq("id", horarioId);
+      setReservas((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, estado: "completado" as EstadoReserva } : r,
+        ),
+      );
+    } catch {
+      Alert.alert("Error", "No se pudo completar el turno. Intenta de nuevo.");
+    }
   };
 
   const borrarReserva = async (id: string) => {
-    await supabase.from("reservas").delete().eq("id", id);
-    setReservas((prev) => prev.filter((r) => r.id !== id));
+    try {
+      const { error } = await supabase.from("reservas").delete().eq("id", id);
+      if (error) throw error;
+      setReservas((prev) => prev.filter((r) => r.id !== id));
+    } catch {
+      Alert.alert("Error", "No se pudo borrar el turno. Intenta de nuevo.");
+    }
   };
 
   const handleCambiarNombre = async () => {
@@ -622,10 +668,15 @@ export default function Dashboard() {
     router.replace("/login");
   };
 
-  const reservasFiltradas =
-    filtro === "todos" ? reservas : reservas.filter((r) => r.estado === filtro);
+  const hoy = hoyISO();
+  const reservasFiltradas = reservas.filter((r) => {
+    const pasaFecha = filtroFecha ? r.fecha === filtroFecha : true;
+    const pasaEstado = filtro === "todos" || r.estado === filtro;
+    return pasaFecha && pasaEstado;
+  });
   const pendientes = reservas.filter((r) => r.estado === "pendiente").length;
   const completados = reservas.filter((r) => r.estado === "completado").length;
+  const turnosHoy = reservas.filter((r) => r.fecha === hoy).length;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -811,6 +862,12 @@ export default function Dashboard() {
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
               {[
                 {
+                  label: "Hoy",
+                  value: turnosHoy,
+                  color: COLORS.accent,
+                  bg: COLORS.accentDim,
+                },
+                {
                   label: "Pendientes",
                   value: pendientes,
                   color: COLORS.warning,
@@ -823,15 +880,24 @@ export default function Dashboard() {
                   bg: COLORS.successDim,
                 },
               ].map((stat, i) => (
-                <View
+                <TouchableOpacity
                   key={i}
+                  onPress={() => {
+                    if (stat.label === "Hoy") {
+                      setFiltroFecha(filtroFecha === hoy ? null : hoy);
+                    }
+                  }}
+                  activeOpacity={stat.label === "Hoy" ? 0.7 : 1}
                   style={{
                     flex: 1,
                     backgroundColor: stat.bg,
                     borderRadius: 14,
                     padding: 14,
                     borderWidth: 1,
-                    borderColor: stat.color + "44",
+                    borderColor:
+                      stat.label === "Hoy" && filtroFecha === hoy
+                        ? stat.color
+                        : stat.color + "44",
                     alignItems: "center",
                   }}
                 >
@@ -855,9 +921,110 @@ export default function Dashboard() {
                   >
                     {stat.label.toUpperCase()}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
+
+            {/* Filtro por fecha */}
+            <Text
+              style={{
+                color: COLORS.textMuted,
+                fontSize: 11,
+                letterSpacing: 1.5,
+                marginBottom: 10,
+              }}
+            >
+              FILTRAR POR FECHA
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 20 }}
+            >
+              <TouchableOpacity
+                onPress={() => setFiltroFecha(null)}
+                style={{
+                  backgroundColor:
+                    filtroFecha === null ? COLORS.accent : COLORS.surface,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginRight: 8,
+                  alignItems: "center",
+                  minWidth: 56,
+                  borderWidth: 1,
+                  borderColor:
+                    filtroFecha === null ? COLORS.accent : COLORS.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: filtroFecha === null ? "white" : COLORS.textMuted,
+                    fontSize: 10,
+                    fontWeight: "700",
+                    marginBottom: 2,
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  TODOS
+                </Text>
+                <Text
+                  style={{
+                    color: filtroFecha === null ? "white" : COLORS.textSecondary,
+                    fontSize: 16,
+                    fontWeight: "800",
+                  }}
+                >
+                  ∞
+                </Text>
+              </TouchableOpacity>
+              {DIAS_FILTRO.map((dia) => {
+                const sel = filtroFecha === dia.value;
+                return (
+                  <TouchableOpacity
+                    key={dia.value}
+                    onPress={() =>
+                      setFiltroFecha(sel ? null : dia.value)
+                    }
+                    style={{
+                      backgroundColor: sel ? COLORS.accent : COLORS.surface,
+                      borderRadius: 12,
+                      padding: 12,
+                      marginRight: 8,
+                      alignItems: "center",
+                      minWidth: 56,
+                      borderWidth: 1,
+                      borderColor: sel ? COLORS.accent : COLORS.border,
+                      shadowColor: sel ? COLORS.accent : "transparent",
+                      shadowOffset: { width: 0, height: 3 },
+                      shadowOpacity: 0.4,
+                      shadowRadius: 6,
+                      elevation: sel ? 4 : 0,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: sel ? "white" : COLORS.textMuted,
+                        fontSize: 10,
+                        fontWeight: "700",
+                        marginBottom: 2,
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {dia.diaSemana.toUpperCase()}
+                    </Text>
+                    <Text
+                      style={{
+                        color: sel ? "white" : COLORS.textPrimary,
+                        fontSize: 15,
+                        fontWeight: "800",
+                      }}
+                    >
+                      {dia.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             {/* Botón gestionar horarios */}
             <TouchableOpacity
@@ -939,7 +1106,11 @@ export default function Dashboard() {
                   flex: 1,
                 }}
               >
-                Turnos reservados
+                {filtroFecha
+                  ? filtroFecha === hoy
+                    ? "Turnos de hoy"
+                    : `Turnos del ${filtroFecha}`
+                  : "Todos los turnos"}
               </Text>
               <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>
                 {reservasFiltradas.length} resultado
@@ -949,29 +1120,40 @@ export default function Dashboard() {
           </>
         }
         ListEmptyComponent={
-          <View
-            style={{
-              backgroundColor: COLORS.surface,
-              borderRadius: 16,
-              padding: 40,
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              borderStyle: "dashed",
-            }}
-          >
-            <Text style={{ fontSize: 36, marginBottom: 12 }}>💬</Text>
-            <Text
+          cargando ? (
+            <View style={{ padding: 60, alignItems: "center" }}>
+              <ActivityIndicator color={COLORS.accent} size="large" />
+              <Text
+                style={{ color: COLORS.textMuted, marginTop: 14, fontSize: 13 }}
+              >
+                Cargando turnos...
+              </Text>
+            </View>
+          ) : (
+            <View
               style={{
-                color: COLORS.textSecondary,
-                fontSize: 14,
-                textAlign: "center",
+                backgroundColor: COLORS.surface,
+                borderRadius: 16,
+                padding: 40,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                borderStyle: "dashed",
               }}
             >
-              Todavía no hay turnos reservados.{"\n"}Cuando un cliente reserve
-              desde tu link, aparecerá acá.
-            </Text>
-          </View>
+              <Text style={{ fontSize: 36, marginBottom: 12 }}>💬</Text>
+              <Text
+                style={{
+                  color: COLORS.textSecondary,
+                  fontSize: 14,
+                  textAlign: "center",
+                }}
+              >
+                Todavía no hay turnos reservados.{"\n"}Cuando un cliente reserve
+                desde tu link, aparecerá acá.
+              </Text>
+            </View>
+          )
         }
         renderItem={({ item }) => (
           <ReservaCard

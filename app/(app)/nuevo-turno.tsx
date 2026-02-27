@@ -12,26 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { COLORS } from "../../constants/colors";
 import { supabase } from "../../lib/supabase";
-
-const COLORS = {
-  bg: "#0F1117",
-  surface: "#1A1D27",
-  surfaceAlt: "#21253A",
-  border: "#2A2E45",
-  accent: "#6C63FF",
-  accentLight: "#8B85FF",
-  accentDim: "#6C63FF22",
-  danger: "#FF5C6A",
-  dangerDim: "#FF5C6A22",
-  success: "#22D3A5",
-  successDim: "#22D3A522",
-  warning: "#FFAA40",
-  warningDim: "#FFAA4022",
-  textPrimary: "#EEEEF5",
-  textSecondary: "#8B8FA8",
-  textMuted: "#4A4E6A",
-};
 
 function generarDias() {
   const dias = [];
