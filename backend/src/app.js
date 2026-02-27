@@ -68,5 +68,26 @@ app.post("/crear-preferencia", async (req, res) => {
     res.status(500).json({ error: "Error al crear preferencia" });
   }
 });
+app.post("/notificar-reserva", async (req, res) => {
+  const { push_token, cliente_nombre, fecha, hora, servicio } = req.body;
+
+  if (!push_token) return res.json({ ok: false });
+
+  try {
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: push_token,
+        title: "📅 Nueva reserva",
+        body: `${cliente_nombre} reservó el ${fecha} a las ${hora}${servicio ? ` — ${servicio}` : ""}`,
+        sound: "default",
+      }),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: "Error al enviar notificación" });
+  }
+});
 
 module.exports = app;
