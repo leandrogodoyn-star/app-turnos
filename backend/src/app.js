@@ -71,6 +71,46 @@ app.post("/regenerar-horarios", validateBody(bodyRegenerarSchema), async (req, r
   }
 });
 
+app.post("/crear-suscripcion-dinamica", async (req, res) => {
+  const { userId, email } = req.body;
+
+  if (!userId) return res.status(400).json({ error: "userId es requerido" });
+
+  try {
+    const response = await fetch(
+      "https://api.mercadopago.com/preapproval",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        },
+        body: JSON.stringify({
+          preapproval_plan_id: process.env.MP_PLAN_ID,
+          reason: "Suscripción Premium App Turnos",
+          external_reference: userId,
+          payer_email: email || "test_user_123@testuser.com", // Solo para pruebas si no viene
+          back_url: "https://harmonious-fudge-da1512.netlify.app/confirmado",
+          auto_return: "approved",
+          status: "pending"
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errData = await response.json();
+      console.error("Error MP Sub:", errData);
+      throw new Error(`Error MP: ${response.status}`);
+    }
+
+    const data = await response.json();
+    res.json({ init_point: data.init_point });
+  } catch (error) {
+    console.error("Error Mercado Pago Suscripción:", error);
+    res.status(500).json({ error: "Error al crear suscripción" });
+  }
+});
+
 app.post("/crear-preferencia", validateBody(bodyPreferenciaSchema), async (req, res) => {
   const { access_token, titulo, precio, nombre, telefono } = req.body;
 

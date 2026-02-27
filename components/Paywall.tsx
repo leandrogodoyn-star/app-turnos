@@ -1,5 +1,6 @@
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { COLORS } from "../constants/colors";
+import { supabase } from "../lib/supabase";
 
 interface PaywallProps {
     title: string;
@@ -12,9 +13,33 @@ export default function Paywall({ title, description }: PaywallProps) {
         Linking.openURL(payPalLink);
     };
 
-    const payWithMercadoPago = () => {
-        const mpLink = "https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=15021025ff074ead820a946e80e59d92";
-        Linking.openURL(mpLink);
+    const payWithMercadoPago = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                Alert.alert("Error", "Debes iniciar sesión para suscribirte");
+                return;
+            }
+
+            const response = await fetch("https://app-turnos-4qaf.onrender.com/crear-suscripcion-dinamica", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user.id,
+                    email: user.email
+                })
+            });
+
+            const data = await response.json();
+            if (data.init_point) {
+                Linking.openURL(data.init_point);
+            } else {
+                throw new Error("No se pudo generar el link");
+            }
+        } catch (error) {
+            console.error("Error generating MP link:", error);
+            Alert.alert("Error", "No se pudo conectar con Mercado Pago. Intenta más tarde.");
+        }
     };
 
     return (
