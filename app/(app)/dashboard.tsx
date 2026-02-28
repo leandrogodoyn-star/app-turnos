@@ -10,6 +10,7 @@ import {
   Modal,
   PanResponder,
   ScrollView,
+  Share,
   StatusBar,
   Text,
   TextInput,
@@ -583,6 +584,7 @@ export default function Dashboard() {
       setPerfil(perfilData);
     } catch (err: any) {
       console.error("[Dashboard] Error loading profile:", err);
+      Alert.alert("Atención", "No pudimos cargar tu perfil de negocio. Asegurate de completar tus datos en Configuración.");
     }
   };
 
@@ -681,7 +683,7 @@ export default function Dashboard() {
   };
 
   const handleCambiarNombre = async () => {
-    if (!nuevoNombre) return;
+    if (!nuevoNombre || !perfil?.id) return;
     await supabase
       .from("profiles")
       .update({ nombre: nuevoNombre })
@@ -790,6 +792,38 @@ export default function Dashboard() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Botón Compartir Link Rápido */}
+        <TouchableOpacity
+          onPress={() => {
+            if (!perfil?.codigo_bot) {
+              Alert.alert("Link no disponible", "Primero configurá el nombre de tu negocio en Configuración.");
+              return;
+            }
+            const link = `https://harmonious-fudge-da1512.netlify.app/reservar/${perfil.codigo_bot}`;
+            Share.share({
+              message: `📅 ¡Hola! Podés reservar tu turno online acá: ${link}`,
+              url: link,
+            });
+          }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            backgroundColor: COLORS.accentDim,
+            marginTop: 20,
+            padding: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: COLORS.accent + "44",
+          }}
+        >
+          <Text style={{ fontSize: 16 }}>🔗</Text>
+          <Text style={{ color: COLORS.accentLight, fontWeight: "700", fontSize: 14 }}>
+            Compartir link de reservas
+          </Text>
+        </TouchableOpacity>
 
         {menuVisible && (
           <View

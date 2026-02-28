@@ -145,7 +145,8 @@ export default function Configuracion() {
     setGuardando(true);
     const { error } = await supabase
       .from("profiles")
-      .update({
+      .upsert({
+        id: userId,
         nombre: nombre.trim(),
         duracion_turno: duracion,
         hora_apertura: horaApertura,
@@ -156,13 +157,12 @@ export default function Configuracion() {
         mp_habilitado: mpHabilitado,
         mp_obligatorio: mpObligatorio,
         mp_access_token: mpAccessToken.trim() || null,
-      })
-      .eq("id", userId);
+      }, { onConflict: 'id' });
 
     setGuardando(false);
 
     if (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Error al Guardar", error.message);
     } else {
       // Regenerar horarios con nueva configuración
       await fetch("https://app-turnos-4qaf.onrender.com/regenerar-horarios", {

@@ -38,6 +38,17 @@ export default function Register() {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [nombreFocused, setNombreFocused] = useState(false);
 
+  const generarCodigoBot = (nombreNegocio: string) => {
+    const base = nombreNegocio
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    const random = Math.floor(1000 + Math.random() * 9000);
+    return `${base}-${random}`;
+  };
+
   const handleRegister = async () => {
     if (!email || !password || !nombre) {
       Alert.alert("Atención", "Completá todos los campos.");
@@ -61,25 +72,52 @@ export default function Register() {
     }
 
     if (data.user) {
-      await supabase.from("profiles").insert({
-        id: data.user.id,
-        nombre,
-        tipo: 'admin',
-      });
-
+      // 1. Iniciar sesión PRIMERO para asegurar que el usuario tenga permiso de RLS para insertar su propio perfil
       const { error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      setCargando(false);
 
       if (loginError) {
-        Alert.alert("Cuenta creada", "Ya podés iniciar sesión.");
+        setCargando(false);
+        Alert.alert("Cuenta creada", "Tu cuenta se creó pero no pudimos iniciar sesión automáticamente. Por favor ingresá manualmente.");
         router.replace("/login");
         return;
       }
 
+      // 2. Crear o actualizar el perfil (usamos upsert por si ya existe una fila creada por un trigger)
+      const codigoBot = generarCodigoBot(nombre);
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: data.user.id,
+        nombre: nombre.trim(),
+        codigo_bot: codigoBot,
+        duracion_turno: 30,
+        hora_apertura: "09:00:00",
+        hora_cierre: "18:00:00",
+        dias_trabajo: [1, 2, 3, 4, 5],
+      }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.error("Error creating profile:", profileError);
+        Alert.alert("Error de Base de Datos", `No pudimos guardar los datos de tu negocio: ${profileError.message}. Por favor, intentá de nuevo.`);
+        setCargando(false);
+        return;
+      }
+
+      // 3. Avisar al backend para generar horarios de inmediato
+      try {
+        fetch("https://app-turnos-4qaf.onrender.com/regenerar-horarios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: data.user.id }),
+        }).catch(err => console.error("Error triggering schedules:", err));
+      } catch (e) { }
+
+      setCargando(false);
       router.replace("/dashboard");
+    } else {
+      setCargando(false);
+      Alert.alert("Error", "No se pudo crear el usuario.");
     }
   };
 
